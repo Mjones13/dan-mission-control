@@ -16,6 +16,8 @@ import { RepoSetupPanel } from '@/components/autopilot/RepoSetupPanel';
 import { openErrorReport } from '@/components/ErrorReportModal';
 import { useToast } from '@/components/Toast';
 import type { Product } from '@/lib/types';
+import { DeferredAutopilotModule } from '@/components/autopilot/DeferredAutopilotModule';
+import { isProductAutopilotEnabled } from '@/lib/config';
 
 type Tab = 'swipe' | 'ideas' | 'research' | 'repo' | 'build' | 'costs' | 'program' | 'maybe';
 type PipelineState = 'idle' | 'researching' | 'ideating' | 'done' | 'error';
@@ -33,6 +35,14 @@ type RepoPreflightResult = {
 };
 
 export default function ProductDashboardPage() {
+  if (!isProductAutopilotEnabled()) {
+    return <DeferredAutopilotModule title="Product Autopilot dashboard is deferred for v1" />;
+  }
+
+  return <ProductDashboardExperience />;
+}
+
+function ProductDashboardExperience() {
   const { productId } = useParams<{ productId: string }>();
   const [product, setProduct] = useState<Product | null>(null);
   const [tab, setTab] = useState<Tab>('swipe');

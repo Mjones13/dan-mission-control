@@ -4,6 +4,24 @@ import { queryAll, queryOne, run } from '@/lib/db';
 import type { Agent, CreateAgentRequest } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
+
+const BOOTSTRAP_AGENT_NAMES = new Set([
+  'Builder Agent',
+  'Tester Agent',
+  'Reviewer Agent',
+  'Learner Agent',
+]);
+
+function isBootstrapAgent(agent: Agent): boolean {
+  return agent.source === 'local' && BOOTSTRAP_AGENT_NAMES.has(agent.name);
+}
+
+function hideBootstrapAgentsWhenGatewayAgentsExist(agents: Agent[]): Agent[] {
+  const hasGatewayAgents = agents.some((agent) => agent.source === 'gateway' || Boolean(agent.gateway_agent_id));
+  if (!hasGatewayAgents) return agents;
+  return agents.filter((agent) => !isBootstrapAgent(agent));
+}
+
 // GET /api/agents - List all agents
 export async function GET(request: NextRequest) {
   try {
@@ -19,6 +37,8 @@ export async function GET(request: NextRequest) {
         SELECT * FROM agents ORDER BY is_master DESC, name ASC
       `);
     }
+
+    agents = hideBootstrapAgentsWhenGatewayAgentsExist(agents);
 
     // Reconcile status badges from real active-task state so stale DB flags don't keep agents green forever
     const activeRows = queryAll<{ assigned_agent_id: string; c: number }>(

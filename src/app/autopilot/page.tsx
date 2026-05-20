@@ -5,8 +5,18 @@ import { Plus, Rocket, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { HealthBadge } from '@/components/autopilot/HealthBadge';
 import type { Product } from '@/lib/types';
+import { DeferredAutopilotModule } from '@/components/autopilot/DeferredAutopilotModule';
+import { isProductAutopilotEnabled } from '@/lib/config';
 
 export default function AutopilotPage() {
+  if (!isProductAutopilotEnabled()) {
+    return <DeferredAutopilotModule title="Product Autopilot is deferred for v1" />;
+  }
+
+  return <AutopilotExperience />;
+}
+
+function AutopilotExperience() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({});

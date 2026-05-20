@@ -4,8 +4,8 @@ import { queryAll, queryOne, run } from '@/lib/db';
 import { broadcast } from '@/lib/events';
 import { CreateTaskSchema } from '@/lib/validation';
 import { populateTaskRolesFromAgents } from '@/lib/workflow-engine';
-import { dispatchTaskFromServer } from '@/lib/server-dispatch';
 import { classifyEnvironmentIssueFromTexts } from '@/lib/environment-issues';
+import { getSafeCreateStatusError } from '@/lib/operational-task-model';
 import { syncTaskToJira } from '@/lib/jira/sync';
 import type { Task, CreateTaskRequest, Agent } from '@/lib/types';
 
@@ -124,6 +124,13 @@ export async function POST(request: NextRequest) {
 
     const workspaceId = validatedData.workspace_id || 'default';
     const status = validatedData.status || 'inbox';
+    const unsafeStatusError = getSafeCreateStatusError(status);
+    if (unsafeStatusError) {
+      return NextResponse.json(
+        { error: unsafeStatusError },
+        { status: 400 }
+      );
+    }
 
     // Auto-assign the workspace's default workflow template
     const defaultTemplate = queryOne<{ id: string }>(
@@ -170,27 +177,10 @@ export async function POST(request: NextRequest) {
     // Auto-populate workflow roles from workspace agents
     populateTaskRolesFromAgents(id, workspaceId);
 
-    if (status === 'assigned' && validatedData.assigned_agent_id) {
-      const dispatchResult = await dispatchTaskFromServer(id);
-      if (!dispatchResult.success) {
-        run(
-          'UPDATE tasks SET planning_dispatch_error = ?, status_reason = ?, updated_at = ? WHERE id = ?',
-          [
-            dispatchResult.error || 'Dispatch failed',
-            `Dispatch failed: ${dispatchResult.error || 'Dispatch failed'}`,
-            new Date().toISOString(),
-            id,
-          ]
-        );
-      }
-    } else if (status === 'assigned') {
-      run(
-        'UPDATE tasks SET planning_dispatch_error = ?, status_reason = ?, updated_at = ? WHERE id = ?',
-        ['No agent assigned', 'Dispatch failed: No agent assigned', new Date().toISOString(), id]
-      );
-    }
+    // V1 operational task creation is intentionally local-only. Runtime dispatch
+    // happens through explicit later transitions, not as a side effect of POST.
 
-    // Fetch created task with all joined fields after any dispatch side effects
+    // Fetch created task with all joined fields after creation
     const task = queryOne<Task & { assigned_agent_name?: string; assigned_agent_emoji?: string; created_by_agent_name?: string; created_by_agent_emoji?: string }>(
       `SELECT t.*,
         aa.name as assigned_agent_name,

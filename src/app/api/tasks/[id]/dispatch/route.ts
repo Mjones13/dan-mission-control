@@ -12,6 +12,7 @@ import { getCodexCliStatus } from '@/lib/codex/status';
 import { cancelCodexRunsForTask, startCodexTaskRun } from '@/lib/codex/dispatch';
 import { buildTaskDispatchContext } from '@/lib/task-dispatch-context';
 import { formatMCPToolsForDispatch } from '@/lib/mcp/proxy';
+import { isDispatchEnabled } from '@/lib/operational-task-model';
 import { getCachedCodebaseContext, type ExplorationDepth } from '@/lib/codebase-explorer';
 import type { Task, Agent, Product, OpenClawSession, WorkflowStage, TaskImage } from '@/lib/types';
 
@@ -48,6 +49,14 @@ function dispatchErrorResponse(taskId: string, error: string, status: number) {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
+
+    if (!isDispatchEnabled()) {
+      return dispatchErrorResponse(
+        id,
+        'Dispatch is disabled for OpenClaw-native v1 unless DISPATCH_ENABLED=true or EXTERNAL_ACTIONS_ENABLED=true is explicitly configured.',
+        403
+      );
+    }
 
     // Parse optional body (may contain review_fix_message for PR review auto-fix)
     let reviewFixMessage: string | undefined;

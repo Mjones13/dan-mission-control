@@ -148,6 +148,7 @@ export class OpenClawClient extends EventEmitter {
         // Perform cleanup even if no new events have arrived
         this.performCacheCleanup();
       }, this.PERIODIC_CLEANUP_INTERVAL_MS);
+      timer.unref?.();
 
       // Store the timer globally so all instances share it
       (globalThis as Record<string, unknown>)[GLOBAL_CACHE_CLEANUP_KEY] = timer;
@@ -438,6 +439,7 @@ export class OpenClawClient extends EventEmitter {
         this.scheduleReconnect();
       }
     }, 10000); // 10 seconds between reconnect attempts
+    this.reconnectTimer.unref?.();
   }
 
   async call<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T> {

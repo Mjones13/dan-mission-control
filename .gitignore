@@ -66,3 +66,7 @@ db-backups/
 # Large video files
 Autensa_v2.mp4
 *.mp4
+
+# Telegram local session secret
+.telegram-session
+.telegram-session.*

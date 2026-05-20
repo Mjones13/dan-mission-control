@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, Check, Rocket, Search, Loader, AlertTriangle, FileText, Sparkles } from 'lucide-react';
 import Link from 'next/link';
+import { DeferredAutopilotModule } from '@/components/autopilot/DeferredAutopilotModule';
+import { isProductAutopilotEnabled } from '@/lib/config';
 
 type Step = 'basics' | 'program' | 'schedule' | 'done';
 
@@ -30,6 +32,14 @@ function isValidUrl(str: string): boolean {
 }
 
 export default function NewProductPage() {
+  if (!isProductAutopilotEnabled()) {
+    return <DeferredAutopilotModule title="Product creation is deferred for v1" />;
+  }
+
+  return <NewProductExperience />;
+}
+
+function NewProductExperience() {
   const router = useRouter();
   const [step, setStep] = useState<Step>('basics');
   const [saving, setSaving] = useState(false);

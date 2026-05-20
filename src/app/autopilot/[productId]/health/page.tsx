@@ -15,6 +15,8 @@ import {
 import Link from 'next/link';
 import { HealthBadge } from '@/components/autopilot/HealthBadge';
 import { HealthChart } from '@/components/autopilot/HealthChart';
+import { DeferredAutopilotModule } from '@/components/autopilot/DeferredAutopilotModule';
+import { isProductAutopilotEnabled } from '@/lib/config';
 import type {
   HealthScoreResponse,
   HealthComponentScore,
@@ -42,6 +44,14 @@ const CHART_KEY_MAP: Record<string, 'overall' | 'research_freshness' | 'pipeline
 };
 
 export default function HealthDashboardPage() {
+  if (!isProductAutopilotEnabled()) {
+    return <DeferredAutopilotModule title="Product health automation is deferred for v1" />;
+  }
+
+  return <HealthDashboardExperience />;
+}
+
+function HealthDashboardExperience() {
   const params = useParams();
   const router = useRouter();
   const productId = params.productId as string;

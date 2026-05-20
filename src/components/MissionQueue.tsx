@@ -5,6 +5,7 @@ import { Plus, ChevronRight, GripVertical, ArrowRightLeft, AlertTriangle, Messag
 import { useMissionControl } from '@/lib/store';
 import { triggerAutoDispatch, shouldTriggerAutoDispatch } from '@/lib/auto-dispatch';
 import { getConfig } from '@/lib/config';
+import { getOperationalQueueGroup } from '@/lib/operational-task-model';
 import { useUnreadCounts } from '@/hooks/useUnreadCounts';
 import type { Task, TaskStatus } from '@/lib/types';
 import { TaskModal } from './TaskModal';
@@ -18,14 +19,14 @@ interface MissionQueueProps {
 }
 
 const COLUMNS: { id: TaskStatus; label: string; color: string }[] = [
-  { id: 'planning', label: '📋 Planning', color: 'border-t-mc-accent-purple' },
   { id: 'inbox', label: 'Inbox', color: 'border-t-mc-accent-pink' },
-  { id: 'assigned', label: 'Assigned', color: 'border-t-mc-accent-yellow' },
-  { id: 'in_progress', label: 'In Progress', color: 'border-t-mc-accent' },
-  { id: 'convoy_active', label: '🚚 Convoy', color: 'border-t-cyan-400' },
-  { id: 'testing', label: 'Testing', color: 'border-t-mc-accent-cyan' },
-  { id: 'review', label: 'Review', color: 'border-t-mc-accent-purple' },
-  { id: 'review_fix', label: 'Fixing PR', color: 'border-t-orange-400' },
+  { id: 'planning', label: 'Ready / Planning', color: 'border-t-mc-accent-purple' },
+  { id: 'assigned', label: 'Ready', color: 'border-t-mc-accent-yellow' },
+  { id: 'in_progress', label: 'Running', color: 'border-t-mc-accent' },
+  { id: 'convoy_active', label: 'Running Convoy', color: 'border-t-cyan-400' },
+  { id: 'testing', label: 'Needs Review', color: 'border-t-mc-accent-cyan' },
+  { id: 'review', label: 'Decision / Review', color: 'border-t-mc-accent-purple' },
+  { id: 'review_fix', label: 'Review Fix', color: 'border-t-orange-400' },
   { id: 'verification', label: 'Verification', color: 'border-t-orange-500' },
   { id: 'done', label: 'Done', color: 'border-t-mc-accent-green' },
 ];
@@ -76,6 +77,11 @@ export function MissionQueue({ workspaceId, mobileMode = false, isPortrait = tru
   const [pendingMove, setPendingMove] = useState<{ task: Task; targetStatus: TaskStatus } | null>(null);
 
   const getTasksByStatus = (status: TaskStatus) => tasks.filter((task) => task.status === status);
+  const queueGroupCounts = tasks.reduce<Record<string, number>>((counts, task) => {
+    const group = getOperationalQueueGroup(task.status);
+    counts[group] = (counts[group] || 0) + 1;
+    return counts;
+  }, {});
 
   // Active pipeline states where manual moves are dangerous
   const ACTIVE_PIPELINE_STATES: TaskStatus[] = ['assigned', 'in_progress', 'convoy_active', 'testing', 'review', 'review_fix', 'verification'];
@@ -197,6 +203,20 @@ export function MissionQueue({ workspaceId, mobileMode = false, isPortrait = tru
           <Plus className="w-4 h-4" />
           New Task
         </button>
+      </div>
+
+      <div className="px-3 py-2 border-b border-mc-border/60 bg-mc-bg-secondary/40 flex flex-wrap gap-2 text-[11px] text-mc-text-secondary">
+        {[
+          ['inbox', 'Inbox'],
+          ['ready', 'Ready'],
+          ['running', 'Running'],
+          ['review', 'Decision / review'],
+          ['done', 'Done'],
+        ].map(([id, label]) => (
+          <span key={id} className="px-2 py-1 rounded-full bg-mc-bg border border-mc-border/60">
+            {label}: <span className="text-mc-text font-medium">{queueGroupCounts[id] || 0}</span>
+          </span>
+        ))}
       </div>
 
       {!mobileMode ? (
@@ -443,6 +463,7 @@ function TaskCard({ task, onDragStart, onClick, onMoveStatus, isDragging, mobile
   const isReviewFix = task.status === 'review_fix';
   const isSubtask = !!task.is_subtask;
   const isAssigned = task.status === 'assigned';
+  const queueGroup = getOperationalQueueGroup(task.status);
   const dispatchError = task.planning_dispatch_error;
   const environmentIssue = getTaskEnvironmentIssue(task);
 
@@ -588,10 +609,12 @@ function TaskCard({ task, onDragStart, onClick, onMoveStatus, isDragging, mobile
           </div>
         )}
 
-        {task.status === 'review' && !dispatchError && (
+        {queueGroup === 'review' && !dispatchError && (
           <div className={`flex items-center gap-2 ${portraitMode ? 'mb-3 py-2 px-3' : 'mb-2 py-1.5 px-2.5'} bg-cyan-500/10 rounded-md border border-cyan-500/30`}>
             <div className="w-2 h-2 bg-cyan-400 rounded-full flex-shrink-0" />
-            <span className="text-xs text-cyan-200">In queue — waiting for verification</span>
+            <span className="text-xs text-cyan-200">
+              {task.status === 'review' ? 'Decision/review needed from M Jones' : 'Review gate — do not dispatch without approval'}
+            </span>
           </div>
         )}
 

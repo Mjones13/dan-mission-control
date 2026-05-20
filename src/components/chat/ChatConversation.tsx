@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Send, Check, Loader, MessageSquare } from 'lucide-react';
 import { MentionInput } from './MentionInput';
+import { LinkifiedText } from './LinkifiedText';
 import type { TaskNote } from '@/lib/types';
 
 interface ChatConversationProps {
@@ -126,7 +127,7 @@ export function ChatConversation({ taskId, onMarkRead }: ChatConversationProps) 
                     {new Date(note.created_at.endsWith('Z') ? note.created_at : note.created_at + 'Z').toLocaleTimeString()}
                   </span>
                 </div>
-                <div className="text-xs text-mc-text whitespace-pre-wrap leading-relaxed">{note.content}</div>
+                <LinkifiedText className="text-xs text-mc-text whitespace-pre-wrap leading-relaxed">{note.content}</LinkifiedText>
               </div>
             </div>
           );
