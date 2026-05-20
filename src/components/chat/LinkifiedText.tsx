@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 
 interface LinkifiedTextProps {
   children: ReactNode;
@@ -150,17 +150,55 @@ function copyTokenWithTextareaFallback(token: string): boolean {
   return copied;
 }
 
-async function copyTokenToClipboard(token: string) {
+async function copyTokenToClipboard(token: string): Promise<boolean> {
   if (navigator.clipboard?.writeText && window.isSecureContext) {
     try {
       await navigator.clipboard.writeText(token);
-      return;
+      return true;
     } catch {
       // Fall through to the legacy copy path below.
     }
   }
 
-  copyTokenWithTextareaFallback(token);
+  return copyTokenWithTextareaFallback(token);
+}
+
+function CopyableToken({ value, type }: { value: string; type: 'slash-token' | 'code-identifier' }) {
+  const [copied, setCopied] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
+  const handleCopy = async () => {
+    const didCopy = await copyTokenToClipboard(value);
+    if (!didCopy) return;
+
+    setCopied(true);
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => setCopied(false), 900);
+  };
+
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        onClick={() => { void handleCopy(); }}
+        className="inline cursor-pointer rounded px-0.5 text-left font-medium text-sky-300 transition-colors hover:bg-sky-300/10 hover:text-sky-200 focus:outline-none focus:ring-1 focus:ring-sky-300/60"
+        title={type === 'code-identifier' ? 'Copy identifier' : 'Copy token'}
+      >
+        {value}
+      </button>
+      {copied && (
+        <span className="pointer-events-none absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-full rounded bg-mc-bg px-1.5 py-0.5 text-[10px] font-medium text-mc-accent shadow-lg ring-1 ring-mc-accent/40">
+          Copied
+        </span>
+      )}
+    </span>
+  );
 }
 
 function renderText(text: string, keyPrefix: string) {
@@ -182,17 +220,7 @@ function renderText(text: string, keyPrefix: string) {
     }
 
     if (part.type === 'slash-token' || part.type === 'code-identifier') {
-      return (
-        <button
-          key={key}
-          type="button"
-          onClick={() => { void copyTokenToClipboard(part.value); }}
-          className="inline cursor-copy rounded px-0.5 text-left font-medium text-sky-300 transition-colors hover:bg-sky-300/10 hover:text-sky-200 focus:outline-none focus:ring-1 focus:ring-sky-300/60"
-          title={part.type === 'code-identifier' ? 'Copy identifier' : 'Copy token'}
-        >
-          {part.value}
-        </button>
-      );
+      return <CopyableToken key={key} value={part.value} type={part.type} />;
     }
 
     return <Fragment key={key}>{part.value}</Fragment>;
