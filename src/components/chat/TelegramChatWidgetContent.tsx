@@ -91,6 +91,8 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
 
   useEffect(() => {
     if (!replyContext.threadAnchor || !replyContext.threadReplyTarget) return;
+    // While context is open, the shared composer should continue the visible
+    // chain by default instead of sending an unthreaded Telegram message.
     setReplyingTo((current) => (current?.id === replyContext.threadReplyTarget?.id ? current : replyContext.threadReplyTarget));
   }, [replyContext.threadAnchor, replyContext.threadReplyTarget]);
 
@@ -126,6 +128,8 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
   };
 
   const handleCloseThread = () => {
+    // Closing the modal exits its temporary reply mode; explicit non-modal
+    // replies still use the normal Reply button flow.
     replyContext.closeThread();
     setReplyingTo(null);
   };

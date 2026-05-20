@@ -4,6 +4,9 @@ export const TELEGRAM_REPLY_CONTEXT_BATCH_SIZE = 5;
 
 export type TelegramReplyContextStatus = 'loaded' | 'missing' | 'non_text' | 'error';
 
+// Context rows use the normal Telegram message shape plus availability state so
+// the modal can render deleted/media/error parents without pretending they are
+// real text messages or persisting a broader Telegram history mirror.
 export interface TelegramReplyContextMessage {
   id: number;
   chatId: string;
@@ -57,6 +60,8 @@ export function createReplyContextLookup(
   localMessages: TelegramMessage[],
   resolvedMessages: Record<number, TelegramReplyContextMessage>,
 ): (id: number) => TelegramReplyContextMessage | null {
+  // Prefer the live chat cache before resolved fallbacks so inline previews and
+  // modal rows pick up fresher text/reactions when the parent is already loaded.
   const localById = new Map(localMessages.map((message) => [message.id, toReplyContextMessage(message)]));
   return (id: number) => localById.get(id) || resolvedMessages[id] || null;
 }
@@ -76,6 +81,8 @@ export function shouldOfferThreadAction(message: Pick<TelegramMessage, 'id' | 'r
 }
 
 export function latestLoadedThreadMessage(threadMessages: TelegramReplyContextMessage[]): TelegramMessage | null {
+  // The composer should continue the visible chain, so unavailable placeholder
+  // rows are skipped and the newest real Telegram message becomes the replyTo.
   for (let index = threadMessages.length - 1; index >= 0; index -= 1) {
     const candidate = threadMessages[index];
     if (candidate.status !== 'loaded') continue;
@@ -89,6 +96,10 @@ export function appendDirectThreadExtensions(
   threadMessages: TelegramReplyContextMessage[],
   localMessages: TelegramMessage[],
 ): TelegramReplyContextMessage[] {
+  // V1 is intentionally conservative: auto-append only a single unambiguous
+  // direct reply to the current latest row. Multiple direct replies indicate a
+  // branch/sibling situation that needs a later child-discovery UI instead of
+  // silently choosing one branch.
   if (threadMessages.length === 0) return threadMessages;
   const existingIds = new Set(threadMessages.map((message) => message.id));
   let nextThreadMessages = threadMessages;
@@ -113,6 +124,9 @@ export async function loadReplyContextBatch(
   resolveMissing: (id: number) => Promise<TelegramReplyContextMessage>,
   limit = TELEGRAM_REPLY_CONTEXT_BATCH_SIZE,
 ): Promise<{ ancestors: TelegramReplyContextMessage[]; reachedRoot: boolean }> {
+  // Follow parent links upward only. Telegram child-reply discovery is not
+  // reliable for ordinary groups, so V1 loads bounded ancestry batches and
+  // leaves sibling/downward branch discovery for a separate feature.
   const ancestors: TelegramReplyContextMessage[] = [];
   let current: TelegramReplyContextMessage | null = anchor;
 

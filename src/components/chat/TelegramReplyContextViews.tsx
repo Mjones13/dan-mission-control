@@ -115,6 +115,9 @@ export function TelegramReplyContextModal({
   if (!open) return null;
 
   return (
+    // The overlay intentionally stops above the shared composer. That keeps the
+    // context modal readable while still letting M Jones focus/type in the main
+    // composer without dismissing the modal.
     <div className="pointer-events-none fixed inset-x-0 top-0 bottom-[6.5rem] z-50 flex items-center justify-center p-3 md:bottom-[7rem] md:p-6">
       <button
         type="button"

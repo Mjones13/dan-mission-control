@@ -38,6 +38,8 @@ export interface UseTelegramReplyContextResult {
 }
 
 async function fetchResolvedMessages(chatId: string, ids: number[]): Promise<TelegramResolvedMessage[]> {
+  // Keep parent lookup bounded and read-only; the API caps ids server-side too,
+  // but de-duping here avoids unnecessary Telegram resolution calls.
   const uniqueIds = Array.from(new Set(ids.filter((id) => Number.isInteger(id) && id > 0)));
   if (uniqueIds.length === 0) return [];
   const query = new URLSearchParams({ ids: uniqueIds.join(',') });
@@ -84,6 +86,8 @@ export function useTelegramReplyContext({ chatId, messages }: UseTelegramReplyCo
 
   useEffect(() => {
     if (!chatId) return;
+    // Resolve enough missing parents to make inline previews useful without
+    // walking hidden history or building a durable Telegram mirror.
     const localIds = new Set(messages.map((message) => message.id));
     const missingPreviewIds = Array.from(new Set(messages
       .map((message) => message.replyToMessageId)
@@ -127,6 +131,9 @@ export function useTelegramReplyContext({ chatId, messages }: UseTelegramReplyCo
 
   useEffect(() => {
     if (!threadAnchor || threadMessages.length === 0) return;
+    // Polling can load the next agent/user reply while the modal is open. If it
+    // directly extends the visible chain, include it so the composer target
+    // advances naturally; ambiguous sibling branches are deliberately ignored.
     setThreadMessages((current) => {
       const extended = appendDirectThreadExtensions(current, messages);
       return extended === current ? current : extended;
@@ -144,6 +151,8 @@ export function useTelegramReplyContext({ chatId, messages }: UseTelegramReplyCo
     setThreadLoadingEarlier(false);
     setThreadError(null);
     try {
+      // The first modal view includes the selected message plus a bounded set of
+      // ancestors; later batches continue upward from the oldest loaded row.
       const { ancestors, reachedRoot } = await loadReplyContextBatch(anchor, lookup, resolveOne, TELEGRAM_REPLY_CONTEXT_BATCH_SIZE - 1);
       setThreadMessages([...ancestors, anchor]);
       setThreadHasEarlier(!reachedRoot);
@@ -182,6 +191,8 @@ export function useTelegramReplyContext({ chatId, messages }: UseTelegramReplyCo
     if (sentMessages.length === 0) return;
     setThreadMessages((current) => {
       if (current.length === 0) return current;
+      // Messages sent from the shared composer are already confirmed by the API;
+      // append them locally so repeated sends keep replying to the newest row.
       const existingIds = new Set(current.map((message) => message.id));
       const appended = sentMessages.filter((message) => !existingIds.has(message.id)).map(toReplyContextMessage);
       return appended.length ? [...current, ...appended] : current;
