@@ -1,4 +1,5 @@
 import { Api } from 'telegram';
+import { isTelegramBridgeStatusMessage } from './bridge-status';
 import { createTelegramClient } from './client';
 
 export interface TelegramGroupChatSummary {
@@ -9,21 +10,6 @@ export interface TelegramGroupChatSummary {
   isChannel: boolean;
   lastMessageAt: string | null;
   lastMessagePreview: string | null;
-}
-
-const BRIDGE_STATUS_PATTERNS = [
-  // OpenClaw bridge/progress draft starter labels seen in Telegram work chats.
-  /^Brin(?:ing|ging)\.\.\./i,
-  /^Tide\s*(?:pooling|pulling)\.\.\./i,
-  /✉️\s*Message/,
-  /🗺️\s*Update Plan/,
-  /📖\s*Read:/,
-  /🔧\s*(Exec|Tool|Edit|Patch):/,
-];
-
-function isBridgeStatusMessage(text: string | null): boolean {
-  if (!text) return false;
-  return BRIDGE_STATUS_PATTERNS.some((pattern) => pattern.test(text));
 }
 
 async function clearUnreadBridgeStatusMessages(
@@ -39,7 +25,7 @@ async function clearUnreadBridgeStatusMessages(
 
   const bridgeMessageIds = messages
     .filter((message): message is Api.Message => message instanceof Api.Message)
-    .filter((message) => isBridgeStatusMessage(message.message || null))
+    .filter((message) => isTelegramBridgeStatusMessage(message.message || null))
     .map((message) => message.id);
 
   if (bridgeMessageIds.length === 0) return 0;
