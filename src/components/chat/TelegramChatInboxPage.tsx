@@ -8,6 +8,7 @@ import { useTelegramChatInbox, type TelegramMessage } from './useTelegramChatInb
 import { getTelegramChatEmoji } from './telegramChatDisplay';
 import { useTelegramAgentReadMarkers } from './useTelegramAgentReadMarkers';
 import { playTelegramSentSound, primeTelegramSentSound } from '@/lib/audio/telegramSentSound';
+import { canStartTelegramSend, recoverFailedTelegramDraft, shouldSendTelegramComposerFromKeyDown, telegramSendButtonClassName } from './telegramComposerSendState';
 
 const CHAT_FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif';
 
@@ -91,10 +92,14 @@ export function TelegramChatInboxPage() {
   };
 
   const handleSendMessage = async () => {
+    if (!canStartTelegramSend(composerText, sending)) return;
+
     primeTelegramSentSound();
+    const attemptedText = composerText;
     const followSentMessagesToBottom = isNearBottomRef.current;
     const replyParent = replyingTo;
-    const result = await sendMessage(composerText, replyParent);
+    setComposerText('');
+    const result = await sendMessage(attemptedText, replyParent);
     shouldScrollToBottomRef.current = followSentMessagesToBottom;
     if (followSentMessagesToBottom) isNearBottomRef.current = true;
     if (result.ok) {
@@ -102,10 +107,9 @@ export function TelegramChatInboxPage() {
       if (selectedChatId && replyParent && !replyParent.isOutgoing) {
         markReadMarker(selectedChatId, replyParent.id);
       }
-      setComposerText('');
       setReplyingTo(null);
     } else {
-      setComposerText(result.unsentText);
+      setComposerText((current) => recoverFailedTelegramDraft(current, result.unsentText));
     }
   };
 
@@ -235,7 +239,7 @@ export function TelegramChatInboxPage() {
                       value={composerText}
                       onChange={(event) => setComposerText(event.target.value)}
                       onKeyDown={(event) => {
-                        if (event.key === 'Enter' && !event.shiftKey) {
+                        if (shouldSendTelegramComposerFromKeyDown(event.key, event.shiftKey)) {
                           event.preventDefault();
                           void handleSendMessage();
                         }
@@ -246,8 +250,8 @@ export function TelegramChatInboxPage() {
                     />
                     <button
                       onClick={() => void handleSendMessage()}
-                      disabled={sending || !composerText.trim()}
-                      className="rounded-lg bg-mc-accent px-4 py-2 text-xs font-medium text-mc-bg transition-colors hover:bg-mc-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={!canStartTelegramSend(composerText, sending)}
+                      className={telegramSendButtonClassName(sending)}
                     >
                       {sending ? 'Sending…' : 'Send'}
                     </button>
