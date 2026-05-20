@@ -36,7 +36,7 @@ export function TelegramChatInboxPage() {
   } = useTelegramChatInbox();
   const [composerText, setComposerText] = useState('');
   const [replyingTo, setReplyingTo] = useState<TelegramMessage | null>(null);
-  const { isMarkedRead, markReadMarker, markReplyParentsRead, toggleReadMarker } = useTelegramAgentReadMarkers();
+  const { getMarkerState, markReadMarker, markReplyParentsRead, cycleMarker } = useTelegramAgentReadMarkers();
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(true);
   const isNearBottomRef = useRef(true);
@@ -111,6 +111,32 @@ export function TelegramChatInboxPage() {
     } else {
       setComposerText((current) => recoverFailedTelegramDraft(current, result.unsentText));
     }
+  };
+
+  const renderMessageMarkerButton = (chatId: string, messageId: number) => {
+    const markerState = getMarkerState(chatId, messageId);
+    const markerLabel = markerState.displayState === 'starred'
+      ? 'Clear local read and follow-up markers'
+      : markerState.displayState === 'read'
+        ? 'Star this message for follow-up'
+        : 'Mark this message read locally';
+    const markerClassName = markerState.displayState === 'starred'
+      ? 'border-yellow-300 bg-yellow-300 text-mc-bg shadow-[0_0_8px_rgba(253,224,71,0.35)] hover:border-yellow-200 hover:bg-yellow-200'
+      : markerState.displayState === 'read'
+        ? 'border-mc-accent bg-mc-accent text-mc-bg shadow-[0_0_8px_rgba(88,166,255,0.35)] hover:border-[#8ec5ff] hover:bg-[#8ec5ff]'
+        : 'border-mc-border text-transparent hover:border-mc-accent hover:text-mc-accent';
+
+    return (
+      <button
+        type="button"
+        onClick={() => cycleMarker(chatId, messageId)}
+        aria-label={markerLabel}
+        className={`flex h-6 w-6 items-center justify-center rounded-full border text-sm leading-none transition-colors ${markerClassName}`}
+        title={markerLabel}
+      >
+        {markerState.displayState === 'starred' ? '★' : markerState.displayState === 'read' ? '✓' : ''}
+      </button>
+    );
   };
 
   return (
@@ -211,16 +237,7 @@ export function TelegramChatInboxPage() {
                         <LinkifiedText className="whitespace-pre-wrap text-sm leading-relaxed text-[#fbfdff]">{message.text}</LinkifiedText>
                         {!message.isOutgoing && selectedChatId && (
                           <div className="mt-2 flex justify-end">
-                            <button
-                              type="button"
-                              onClick={() => toggleReadMarker(selectedChatId, message.id)}
-                              aria-label={isMarkedRead(selectedChatId, message.id) ? 'Marked read locally' : 'Mark this message read locally'}
-                              aria-pressed={isMarkedRead(selectedChatId, message.id)}
-                              className={`flex h-6 w-6 items-center justify-center rounded-full border text-sm leading-none transition-colors ${isMarkedRead(selectedChatId, message.id) ? 'border-mc-accent bg-mc-accent text-mc-bg shadow-[0_0_8px_rgba(88,166,255,0.35)]' : 'border-mc-border text-transparent hover:border-mc-accent hover:text-mc-accent'}`}
-                              title={isMarkedRead(selectedChatId, message.id) ? 'Marked read locally' : 'Mark this message read locally'}
-                            >
-                              {isMarkedRead(selectedChatId, message.id) ? '✓' : ''}
-                            </button>
+                            {renderMessageMarkerButton(selectedChatId, message.id)}
                           </div>
                         )}
                       </div>
