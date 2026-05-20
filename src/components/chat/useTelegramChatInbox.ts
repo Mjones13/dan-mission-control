@@ -70,6 +70,8 @@ const MAX_CACHED_CHATS = 20;
 const MAX_MESSAGES_PER_CHAT = 150;
 const SELECTED_MESSAGE_REFRESH_STALE_MS = 5000;
 
+// Wrap every chat fetch with a timeout while still honoring caller-owned aborts,
+// so selected-chat switches can cancel obsolete work without losing timeout safety.
 async function fetchJson(url: string, options?: RequestInit) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -120,6 +122,8 @@ export function mergeTelegramMessages(current: TelegramMessage[], incoming: Tele
   return Array.from(byId.values()).sort((a, b) => a.id - b.id);
 }
 
+// Selection changes should show fresh cached messages immediately instead of
+// refetching on every A/B click; stale or empty caches still refresh right away.
 export function shouldRefreshSelectedMessages(
   entry: Pick<ChatMessageCacheEntry, 'messages' | 'lastFetchedAt'> | null | undefined,
   now: number,
@@ -168,7 +172,11 @@ export function useTelegramChatInbox(): UseTelegramChatInboxResult {
   const messageCacheRef = useRef<Record<string, ChatMessageCacheEntry>>({});
   const loadingChatsRef = useRef(false);
   const messageInFlightRef = useRef<Record<string, boolean>>({});
+  // Each message request gets a per-chat generation so late responses from
+  // superseded requests cannot overwrite newer cache state.
   const messageRequestGenerationRef = useRef<Record<string, number>>({});
+  // Only one selected-thread request should be active globally; switching chats
+  // aborts the previous selected fetch instead of letting requests pile up.
   const selectedMessageRequestRef = useRef<{ chatId: string; generation: number; controller: AbortController } | null>(null);
   const olderInFlightRef = useRef<Record<string, boolean>>({});
   const chatListPollRef = useRef<NodeJS.Timeout | null>(null);
@@ -227,6 +235,8 @@ export function useTelegramChatInbox(): UseTelegramChatInboxResult {
     }
   }, []);
 
+  // Load the latest window for a chat. When called for the selected thread, this
+  // also enforces abort/stale-response guards for rapid chat switching.
   const loadMessagesForChat = useCallback(async (chatId: string, background = false, options?: { selected?: boolean }) => {
     const selectedRequest = options?.selected ?? false;
     if (messageInFlightRef.current[chatId]) return;
@@ -234,6 +244,8 @@ export function useTelegramChatInbox(): UseTelegramChatInboxResult {
     if (selectedRequest) {
       const activeSelectedRequest = selectedMessageRequestRef.current;
       if (activeSelectedRequest) {
+        // A new selected-chat request makes the prior selected fetch obsolete;
+        // abort it and release its in-flight flag so the new chat can proceed.
         activeSelectedRequest.controller.abort();
         messageInFlightRef.current[activeSelectedRequest.chatId] = false;
       }
@@ -289,6 +301,8 @@ export function useTelegramChatInbox(): UseTelegramChatInboxResult {
     } catch (err) {
       if (!isLatestRequest()) return;
       if (controller.signal.aborted) {
+        // Aborted selected fetches are expected during fast chat switching; clear
+        // loading state quietly instead of showing a timeout/error to the user.
         setMessageCache((cache) => updateEntry(cache, chatId, (entry) => ({
           ...entry,
           isInitialLoading: false,
