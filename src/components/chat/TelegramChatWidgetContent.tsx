@@ -40,7 +40,7 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
   } = useTelegramChatInbox();
   const [composerText, setComposerText] = useState('');
   const [replyingTo, setReplyingTo] = useState<TelegramMessage | null>(null);
-  const { isMarkedRead, markReadMarker, markReplyParentsRead, toggleReadMarker } = useTelegramAgentReadMarkers();
+  const { getMarkerState, markReadMarker, markReplyParentsRead, cycleMarker } = useTelegramAgentReadMarkers();
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(true);
   const isNearBottomRef = useRef(true);
@@ -112,6 +112,32 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
     }
   };
 
+  const renderMessageMarkerButton = (chatId: string, messageId: number) => {
+    const markerState = getMarkerState(chatId, messageId);
+    const markerLabel = markerState.displayState === 'starred'
+      ? 'Clear local read and follow-up markers'
+      : markerState.displayState === 'read'
+        ? 'Star this message for follow-up'
+        : 'Mark this message read locally';
+    const markerClassName = markerState.displayState === 'starred'
+      ? 'border-yellow-300 bg-yellow-300 text-mc-bg shadow-[0_0_8px_rgba(253,224,71,0.35)] hover:border-yellow-200 hover:bg-yellow-200'
+      : markerState.displayState === 'read'
+        ? 'border-mc-accent bg-mc-accent text-mc-bg shadow-[0_0_8px_rgba(88,166,255,0.35)] hover:border-[#8ec5ff] hover:bg-[#8ec5ff]'
+        : 'border-mc-border text-transparent hover:border-mc-accent hover:text-mc-accent';
+
+    return (
+      <button
+        type="button"
+        onClick={() => cycleMarker(chatId, messageId)}
+        aria-label={markerLabel}
+        className={`flex h-5 w-5 items-center justify-center rounded-full border text-xs leading-none transition-colors ${markerClassName}`}
+        title={markerLabel}
+      >
+        {markerState.displayState === 'starred' ? '★' : markerState.displayState === 'read' ? '✓' : ''}
+      </button>
+    );
+  };
+
   const chatList = (
     <div className="flex h-full flex-col">
       {loadingChats ? (
@@ -181,16 +207,7 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
                 <LinkifiedText className="whitespace-pre-wrap text-sm leading-relaxed text-[#fbfdff]">{message.text}</LinkifiedText>
                 {!message.isOutgoing && selectedChat && (
                   <div className="mt-2 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => toggleReadMarker(selectedChat.id, message.id)}
-                      aria-label={isMarkedRead(selectedChat.id, message.id) ? 'Marked read locally' : 'Mark this message read locally'}
-                      aria-pressed={isMarkedRead(selectedChat.id, message.id)}
-                      className={`flex h-5 w-5 items-center justify-center rounded-full border text-xs leading-none transition-colors ${isMarkedRead(selectedChat.id, message.id) ? 'border-mc-accent bg-mc-accent text-mc-bg shadow-[0_0_8px_rgba(88,166,255,0.35)]' : 'border-mc-border text-transparent hover:border-mc-accent hover:text-mc-accent'}`}
-                      title={isMarkedRead(selectedChat.id, message.id) ? 'Marked read locally' : 'Mark this message read locally'}
-                    >
-                      {isMarkedRead(selectedChat.id, message.id) ? '✓' : ''}
-                    </button>
+                    {renderMessageMarkerButton(selectedChat.id, message.id)}
                   </div>
                 )}
               </div>
