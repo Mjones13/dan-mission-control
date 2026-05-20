@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { TelegramMessage } from './useTelegramChatInbox';
 import {
   TELEGRAM_REPLY_CONTEXT_BATCH_SIZE,
+  appendDirectThreadExtensions,
   createReplyContextLookup,
   createUnavailableReplyContextMessage,
   latestLoadedThreadMessage,
@@ -123,6 +124,14 @@ export function useTelegramReplyContext({ chatId, messages }: UseTelegramReplyCo
   }, [lookup, messages]);
 
   const threadReplyTarget = useMemo(() => latestLoadedThreadMessage(threadMessages), [threadMessages]);
+
+  useEffect(() => {
+    if (!threadAnchor || threadMessages.length === 0) return;
+    setThreadMessages((current) => {
+      const extended = appendDirectThreadExtensions(current, messages);
+      return extended === current ? current : extended;
+    });
+  }, [messages, threadAnchor, threadMessages.length]);
 
   const canOpenThread = useCallback((message: TelegramMessage) => shouldOfferThreadAction(message, messages), [messages]);
 

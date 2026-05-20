@@ -125,6 +125,11 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
     setReplyingTo(message);
   };
 
+  const handleCloseThread = () => {
+    replyContext.closeThread();
+    setReplyingTo(null);
+  };
+
   const chatList = (
     <div className="flex h-full flex-col">
       {loadingChats ? (
@@ -252,7 +257,7 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
         loadingEarlier={replyContext.threadLoadingEarlier}
         hasEarlier={replyContext.threadHasEarlier}
         error={replyContext.threadError}
-        onClose={replyContext.closeThread}
+        onClose={handleCloseThread}
         onLoadEarlier={() => void replyContext.loadEarlierInThread()}
         onReply={handleReplyFromThread}
       />

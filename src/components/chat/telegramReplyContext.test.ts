@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { TelegramMessage } from './useTelegramChatInbox';
 import {
+  appendDirectThreadExtensions,
   createReplyContextLookup,
   createUnavailableReplyContextMessage,
   getInlineReplyPreview,
@@ -118,4 +119,32 @@ test('latestLoadedThreadMessage skips unavailable messages when defaulting compo
   const target = latestLoadedThreadMessage([parent, unavailable]);
 
   assert.equal(target?.id, 1);
+});
+
+test('appendDirectThreadExtensions appends newly loaded replies that extend current visible chain', () => {
+  const parent = message(1);
+  const anchor = message(2, { replyToMessageId: 1 });
+  const agentReply = message(3, { replyToMessageId: 2, text: 'agent follow-up' });
+
+  const extended = appendDirectThreadExtensions(
+    [toReplyContextMessage(parent), toReplyContextMessage(anchor)],
+    [parent, anchor, agentReply],
+  );
+
+  assert.deepEqual(extended.map((item) => item.id), [1, 2, 3]);
+  assert.equal(latestLoadedThreadMessage(extended)?.id, 3);
+});
+
+test('appendDirectThreadExtensions leaves ambiguous parallel direct replies for a later branch-discovery pass', () => {
+  const parent = message(1);
+  const anchor = message(2, { replyToMessageId: 1 });
+  const firstBranch = message(3, { replyToMessageId: 2 });
+  const secondBranch = message(4, { replyToMessageId: 2 });
+
+  const extended = appendDirectThreadExtensions(
+    [toReplyContextMessage(parent), toReplyContextMessage(anchor)],
+    [parent, anchor, firstBranch, secondBranch],
+  );
+
+  assert.deepEqual(extended.map((item) => item.id), [1, 2]);
 });

@@ -126,6 +126,11 @@ export function TelegramChatInboxPage() {
     setReplyingTo(message);
   };
 
+  const handleCloseThread = () => {
+    replyContext.closeThread();
+    setReplyingTo(null);
+  };
+
   return (
     <main className="min-h-screen bg-mc-bg p-2 text-[#f5f7fb] md:p-4" style={{ fontFamily: CHAT_FONT_FAMILY }}>
       <div className="mx-auto flex h-[calc(100vh-1rem)] max-w-[88rem] flex-col overflow-hidden rounded-2xl border border-mc-border bg-mc-bg-secondary shadow-2xl shadow-black/30 md:h-[calc(100vh-2rem)]">
@@ -271,7 +276,7 @@ export function TelegramChatInboxPage() {
           loadingEarlier={replyContext.threadLoadingEarlier}
           hasEarlier={replyContext.threadHasEarlier}
           error={replyContext.threadError}
-          onClose={replyContext.closeThread}
+          onClose={handleCloseThread}
           onLoadEarlier={() => void replyContext.loadEarlierInThread()}
           onReply={handleReplyFromThread}
         />

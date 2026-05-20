@@ -85,6 +85,28 @@ export function latestLoadedThreadMessage(threadMessages: TelegramReplyContextMe
   return null;
 }
 
+export function appendDirectThreadExtensions(
+  threadMessages: TelegramReplyContextMessage[],
+  localMessages: TelegramMessage[],
+): TelegramReplyContextMessage[] {
+  if (threadMessages.length === 0) return threadMessages;
+  const existingIds = new Set(threadMessages.map((message) => message.id));
+  let nextThreadMessages = threadMessages;
+
+  while (true) {
+    const latest = latestLoadedThreadMessage(nextThreadMessages);
+    if (!latest) return nextThreadMessages;
+    const directExtensions = localMessages
+      .filter((message) => !existingIds.has(message.id) && message.replyToMessageId === latest.id)
+      .sort((a, b) => a.id - b.id);
+
+    if (directExtensions.length !== 1) return nextThreadMessages;
+    const [extension] = directExtensions;
+    existingIds.add(extension.id);
+    nextThreadMessages = [...nextThreadMessages, toReplyContextMessage(extension)];
+  }
+}
+
 export async function loadReplyContextBatch(
   anchor: TelegramReplyContextMessage,
   lookup: (id: number) => TelegramReplyContextMessage | null,
