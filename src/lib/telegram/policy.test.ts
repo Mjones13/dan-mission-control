@@ -2,14 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getTelegramPollingPolicy, isTelegramPollIntervalEnabled } from './policy';
 
-test('stable policy defaults cut polling to one minute and thirty seconds', () => {
+test('stable policy defaults preserve currently deployed polling behavior', () => {
   const policy = getTelegramPollingPolicy({ MISSION_CONTROL_ENV: 'stable' });
 
   assert.equal(policy.environment, 'stable');
   assert.equal(policy.pollingMode, 'normal');
-  assert.equal(policy.chatListPollMs, 60_000);
-  assert.equal(policy.selectedChatPollMs, 30_000);
-  assert.equal(policy.badgePollMs, 60_000);
+  assert.equal(policy.chatListPollMs, 15_000);
+  assert.equal(policy.selectedChatPollMs, 10_000);
+  assert.equal(policy.badgePollMs, 30_000);
   assert.equal(policy.pollWhenHidden, false);
   assert.equal(policy.manualRefreshOnly, false);
 });
@@ -55,6 +55,6 @@ test('manual and disabled modes suppress interval polling', () => {
 
   assert.equal(manual.manualRefreshOnly, true);
   assert.equal(disabled.manualRefreshOnly, true);
-  assert.equal(isTelegramPollIntervalEnabled(manual, 60_000), false);
-  assert.equal(isTelegramPollIntervalEnabled(disabled, 60_000), false);
+  assert.equal(isTelegramPollIntervalEnabled(manual, 15_000), false);
+  assert.equal(isTelegramPollIntervalEnabled(disabled, 15_000), false);
 });
