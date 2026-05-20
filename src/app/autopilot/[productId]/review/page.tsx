@@ -6,8 +6,18 @@ import Link from 'next/link';
 import { ArrowLeft, Layers } from 'lucide-react';
 import { BatchReviewList } from '@/components/autopilot/BatchReviewList';
 import type { Idea } from '@/lib/types';
+import { DeferredAutopilotModule } from '@/components/autopilot/DeferredAutopilotModule';
+import { isProductAutopilotEnabled } from '@/lib/config';
 
 export default function BatchReviewPage() {
+  if (!isProductAutopilotEnabled()) {
+    return <DeferredAutopilotModule title="Autopilot batch review is deferred for v1" />;
+  }
+
+  return <BatchReviewExperience />;
+}
+
+function BatchReviewExperience() {
   const { productId } = useParams<{ productId: string }>();
   const router = useRouter();
   const [ideas, setIdeas] = useState<Idea[]>([]);

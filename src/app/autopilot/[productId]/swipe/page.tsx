@@ -4,8 +4,18 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { SwipeDeck } from '@/components/autopilot/SwipeDeck';
+import { DeferredAutopilotModule } from '@/components/autopilot/DeferredAutopilotModule';
+import { isProductAutopilotEnabled } from '@/lib/config';
 
 export default function SwipePage() {
+  if (!isProductAutopilotEnabled()) {
+    return <DeferredAutopilotModule title="Autopilot swipe deck is deferred for v1" />;
+  }
+
+  return <SwipeExperience />;
+}
+
+function SwipeExperience() {
   const { productId } = useParams<{ productId: string }>();
 
   return (

@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Zap, Settings, ChevronLeft, LayoutGrid, Rocket } from 'lucide-react';
+import { Zap, Settings, ChevronLeft, LayoutGrid } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
+import { isProductAutopilotEnabled } from '@/lib/config';
 import { format } from 'date-fns';
 import type { Workspace } from '@/lib/types';
 
@@ -28,12 +29,16 @@ export function Header({ workspace, isPortrait = true }: HeaderProps) {
     const loadSubAgentCount = async () => {
       try {
         const res = await fetch('/api/openclaw/sessions?session_type=subagent&status=active');
-        if (res.ok) {
-          const sessions = await res.json();
-          setActiveSubAgents(sessions.length);
+        if (!res.ok) {
+          setActiveSubAgents(0);
+          return;
         }
-      } catch (error) {
-        console.error('Failed to load sub-agent count:', error);
+
+        const data = await res.json();
+        const sessions = Array.isArray(data) ? data : data.sessions;
+        setActiveSubAgents(Array.isArray(sessions) ? sessions.length : 0);
+      } catch {
+        setActiveSubAgents(0);
       }
     };
 
@@ -45,6 +50,7 @@ export function Header({ workspace, isPortrait = true }: HeaderProps) {
   const workingAgents = agents.filter((a) => a.status === 'working').length;
   const activeAgents = workingAgents + activeSubAgents;
   const tasksInQueue = tasks.filter((t) => t.status !== 'done' && t.status !== 'review').length;
+  const productAutopilotEnabled = isProductAutopilotEnabled();
 
   const portraitWorkspaceHeader = !!workspace && isPortrait;
 
@@ -68,9 +74,11 @@ export function Header({ workspace, isPortrait = true }: HeaderProps) {
               </div>
             </div>
 
-            <Link href="/autopilot" className="min-h-11 min-w-11 p-2 hover:bg-mc-bg-tertiary rounded text-mc-text-secondary" title="Autopilot">
-              <Rocket className="w-5 h-5" />
-            </Link>
+            {productAutopilotEnabled && (
+              <Link href="/autopilot" className="min-h-11 min-w-11 p-2 hover:bg-mc-bg-tertiary rounded text-mc-text-secondary" title="Autopilot">
+                Autopilot
+              </Link>
+            )}
             <button onClick={() => router.push('/settings')} className="min-h-11 min-w-11 p-2 hover:bg-mc-bg-tertiary rounded text-mc-text-secondary shrink-0" title="Settings">
               <Settings className="w-5 h-5" />
             </button>
@@ -153,9 +161,11 @@ export function Header({ workspace, isPortrait = true }: HeaderProps) {
               <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-mc-accent-green animate-pulse' : 'bg-mc-accent-red'}`} />
               {isOnline ? 'ONLINE' : 'OFFLINE'}
             </div>
-            <Link href="/autopilot" className="min-h-11 min-w-11 p-2 hover:bg-mc-bg-tertiary rounded text-mc-text-secondary" title="Autopilot">
-              <Rocket className="w-5 h-5" />
-            </Link>
+            {productAutopilotEnabled && (
+              <Link href="/autopilot" className="min-h-11 p-2 hover:bg-mc-bg-tertiary rounded text-mc-text-secondary text-sm" title="Autopilot">
+                Autopilot
+              </Link>
+            )}
             <button onClick={() => router.push('/settings')} className="min-h-11 min-w-11 p-2 hover:bg-mc-bg-tertiary rounded text-mc-text-secondary" title="Settings">
               <Settings className="w-5 h-5" />
             </button>

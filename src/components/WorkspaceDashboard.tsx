@@ -1,14 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, ArrowRight, Folder, Users, CheckSquare, Trash2, AlertTriangle, Activity, Rocket } from 'lucide-react';
+import { Plus, ArrowRight, Folder, Users, CheckSquare, Trash2, AlertTriangle, Activity } from 'lucide-react';
 import Link from 'next/link';
+import { isProductAutopilotEnabled } from '@/lib/config';
 import type { WorkspaceStats } from '@/lib/types';
+import { OpenClawStatusCard } from './OpenClawStatusCard';
 
 export function WorkspaceDashboard() {
   const [workspaces, setWorkspaces] = useState<WorkspaceStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const productAutopilotEnabled = isProductAutopilotEnabled();
 
   useEffect(() => {
     loadWorkspaces();
@@ -50,13 +53,14 @@ export function WorkspaceDashboard() {
               <h1 className="text-xl font-bold">Mission Control</h1>
             </div>
             <div className="flex items-center gap-2">
-              <Link
-                href="/autopilot"
-                className="min-h-11 px-4 rounded-lg border border-mc-border bg-mc-bg text-mc-text-secondary hover:text-mc-text hover:bg-mc-bg-tertiary flex items-center gap-2 text-sm"
-              >
-                <Rocket className="w-4 h-4" />
-                Autopilot
-              </Link>
+              {productAutopilotEnabled && (
+                <Link
+                  href="/autopilot"
+                  className="min-h-11 px-4 rounded-lg border border-mc-border bg-mc-bg text-mc-text-secondary hover:text-mc-text hover:bg-mc-bg-tertiary flex items-center gap-2 text-sm"
+                >
+                  Autopilot
+                </Link>
+              )}
               <Link
                 href="/activity"
                 className="min-h-11 px-4 rounded-lg border border-mc-border bg-mc-bg text-mc-text-secondary hover:text-mc-text hover:bg-mc-bg-tertiary flex items-center gap-2 text-sm"
@@ -78,6 +82,8 @@ export function WorkspaceDashboard() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <OpenClawStatusCard />
+
         <div className="mb-8">
           <h2 className="text-2xl font-bold mb-2">All Workspaces</h2>
           <p className="text-mc-text-secondary">

@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { MessageSquare, X, Minimize2, Maximize2, ChevronLeft, Inbox } from 'lucide-react';
-import { ChatConversation } from './ChatConversation';
-import { ChatInbox } from './ChatInbox';
+import Link from 'next/link';
+import { MessageSquare, X, Minimize2, Maximize2, Inbox } from 'lucide-react';
+import { TelegramChatWidgetContent } from './TelegramChatWidgetContent';
 
 export interface UnreadTask {
   task_id: string;
@@ -17,22 +17,23 @@ export interface UnreadTask {
   assigned_agent_emoji: string | null;
 }
 
+interface TelegramChatSummary {
+  unreadCount: number;
+}
+
+
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [selectedTaskTitle, setSelectedTaskTitle] = useState<string>('');
-  const [unreadTasks, setUnreadTasks] = useState<UnreadTask[]>([]);
+  const [isExpanded, setIsExpanded] = useState(true);
   const [totalUnread, setTotalUnread] = useState(0);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchUnread = useCallback(async () => {
     try {
-      const res = await fetch('/api/tasks/unread');
+      const res = await fetch('/api/telegram/chats?limit=100');
       if (res.ok) {
-        const data: UnreadTask[] = await res.json();
-        setUnreadTasks(data);
-        setTotalUnread(data.reduce((sum, t) => sum + t.unread_count, 0));
+        const data: { chats?: TelegramChatSummary[] } = await res.json();
+        setTotalUnread((data.chats || []).reduce((sum, chat) => sum + chat.unreadCount, 0));
       }
     } catch {
       // Silent — will retry
@@ -40,12 +41,19 @@ export function ChatWidget() {
   }, []);
 
   useEffect(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+
+    if (isOpen) return;
+
     fetchUnread();
-    pollRef.current = setInterval(fetchUnread, 3000);
+    pollRef.current = setInterval(fetchUnread, 30000);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [fetchUnread]);
+  }, [fetchUnread, isOpen]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -57,16 +65,12 @@ export function ChatWidget() {
       }
       // Escape to close
       if (e.key === 'Escape' && isOpen) {
-        if (selectedTaskId) {
-          setSelectedTaskId(null);
-        } else {
-          setIsOpen(false);
-        }
+        setIsOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, selectedTaskId]);
+  }, [isOpen]);
 
   // Listen for chat:toggle custom event (from CommandPalette)
   useEffect(() => {
@@ -75,25 +79,12 @@ export function ChatWidget() {
     return () => window.removeEventListener('chat:toggle', handleToggle);
   }, []);
 
-  const handleSelectTask = (taskId: string, title: string) => {
-    setSelectedTaskId(taskId);
-    setSelectedTaskTitle(title);
-    // Mark as read
-    fetch(`/api/tasks/${taskId}/read`, { method: 'POST' }).catch(() => {});
-  };
-
-  const handleBack = () => {
-    setSelectedTaskId(null);
-    fetchUnread(); // Refresh counts
-  };
-
   const handleClose = () => {
     setIsOpen(false);
-    setSelectedTaskId(null);
   };
 
-  const widthClass = isExpanded ? 'w-[560px]' : 'w-[380px]';
-  const heightClass = isExpanded ? 'h-[600px]' : 'h-[480px]';
+  const widthClass = isExpanded ? 'w-[950px]' : 'w-[475px]';
+  const heightClass = isExpanded ? 'h-[790px]' : 'h-[530px]';
 
   return (
     <>
@@ -121,30 +112,16 @@ export function ChatWidget() {
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-2.5 border-b border-mc-border bg-mc-bg-secondary flex-shrink-0">
             <div className="flex items-center gap-2 min-w-0">
-              {selectedTaskId && (
-                <button
-                  onClick={handleBack}
-                  className="p-1 hover:bg-mc-bg-tertiary rounded transition-colors"
-                  title="Back to inbox"
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/chat-inbox"
+                  className="flex items-center gap-2 rounded-sm hover:text-mc-accent transition-colors"
+                  title="Open full Chat Inbox"
                 >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-              )}
-              {selectedTaskId ? (
-                <span className="text-sm font-medium truncate" title={selectedTaskTitle}>
-                  {selectedTaskTitle}
-                </span>
-              ) : (
-                <div className="flex items-center gap-2">
                   <Inbox className="w-4 h-4 text-mc-accent" />
                   <span className="text-sm font-medium">Chat Inbox</span>
-                  {unreadTasks.length > 0 && (
-                    <span className="text-xs text-mc-text-secondary">
-                      {unreadTasks.length} conversation{unreadTasks.length !== 1 ? 's' : ''}
-                    </span>
-                  )}
-                </div>
-              )}
+                </Link>
+              </div>
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
               <button
@@ -166,19 +143,7 @@ export function ChatWidget() {
 
           {/* Content */}
           <div className="flex-1 overflow-hidden">
-            {selectedTaskId ? (
-              <ChatConversation
-                taskId={selectedTaskId}
-                onMarkRead={() => {
-                  fetch(`/api/tasks/${selectedTaskId}/read`, { method: 'POST' }).catch(() => {});
-                }}
-              />
-            ) : (
-              <ChatInbox
-                tasks={unreadTasks}
-                onSelectTask={handleSelectTask}
-              />
-            )}
+            <TelegramChatWidgetContent isExpanded={isExpanded} />
           </div>
 
           {/* Footer hint */}

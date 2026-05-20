@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOpenClawClient } from '@/lib/openclaw/client';
 import { queryAll } from '@/lib/db';
+import { normalizeGatewaySessions } from '@/lib/openclaw/status-normalizer';
 import type { OpenClawSession } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 // GET /api/openclaw/sessions - List OpenClaw sessions
 export async function GET(request: NextRequest) {
+  const checkedAt = new Date().toISOString();
+
   try {
     const { searchParams } = new URL(request.url);
     const sessionType = searchParams.get('session_type');
@@ -38,22 +41,48 @@ export async function GET(request: NextRequest) {
     if (!client.isConnected()) {
       try {
         await client.connect();
-      } catch {
-        return NextResponse.json(
-          { error: 'Failed to connect to OpenClaw Gateway' },
-          { status: 503 }
-        );
+      } catch (error) {
+        return NextResponse.json({
+          ...normalizeGatewaySessions([], {
+            available: false,
+            authenticated: false,
+            error,
+            checkedAt,
+          }),
+          unavailable: true,
+        });
       }
     }
 
-    const sessions = await client.listSessions();
-    return NextResponse.json({ sessions });
+    try {
+      const sessions = await client.listSessions();
+      return NextResponse.json(normalizeGatewaySessions(sessions, {
+        available: true,
+        authenticated: true,
+        checkedAt,
+      }));
+    } catch (error) {
+      return NextResponse.json({
+        ...normalizeGatewaySessions([], {
+          available: true,
+          authenticated: false,
+          error,
+          checkedAt,
+        }),
+        unavailable: false,
+      });
+    }
   } catch (error) {
     console.error('Failed to list OpenClaw sessions:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      ...normalizeGatewaySessions([], {
+        available: false,
+        authenticated: false,
+        error,
+        checkedAt,
+      }),
+      unavailable: true,
+    });
   }
 }
 

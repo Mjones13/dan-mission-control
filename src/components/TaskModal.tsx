@@ -118,8 +118,9 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
     // Auto-determine based on agent assignment
     const hasAgent = !!form.assigned_agent_id;
     if (!task) {
-      // New task: agent → assigned, no agent → inbox
-      return hasAgent ? 'assigned' : 'inbox';
+      // New v1 operational tasks stay local/inbox even when an owner is chosen.
+      // Runtime dispatch requires an explicit later transition/approval path.
+      return 'inbox';
     }
     // Existing task: if in inbox and agent just assigned, promote to assigned
     if (task.status === 'inbox' && hasAgent) return 'assigned';
@@ -368,9 +369,9 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
             </div>
           )}
 
-          {/* Assigned Agent */}
+          {/* Owner / Assigned Agent */}
           <div>
-            <label className="block text-sm font-medium mb-1">Assign to</label>
+            <label className="block text-sm font-medium mb-1">Owner / Assigned Agent</label>
             <select
               value={form.assigned_agent_id}
               onChange={(e) => {
@@ -392,6 +393,11 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
                 ➕ Add new agent...
               </option>
             </select>
+            {!task && form.assigned_agent_id && (
+              <p className="mt-1 text-xs text-mc-text-secondary">
+                New v1 tasks stay in Inbox first; assigning an owner here does not dispatch runtime work.
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

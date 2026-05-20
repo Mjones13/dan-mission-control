@@ -25,6 +25,28 @@ export interface MissionControlConfig {
   kanbanCompactEmptyColumns: boolean; // shrink empty columns to fit header text
 }
 
+export interface V1FeatureFlags {
+  fieldOpsEnabled: boolean;
+  externalActionsEnabled: boolean;
+  productAutopilotEnabled: boolean;
+  dispatchEnabled: boolean;
+}
+
+function envFlag(name: string): boolean {
+  return process.env[name] === 'true' || process.env[name] === '1';
+}
+
+export const v1FeatureFlags: V1FeatureFlags = {
+  fieldOpsEnabled: envFlag('NEXT_PUBLIC_FIELD_OPS_ENABLED') || envFlag('FIELD_OPS_ENABLED'),
+  externalActionsEnabled: envFlag('NEXT_PUBLIC_EXTERNAL_ACTIONS_ENABLED') || envFlag('EXTERNAL_ACTIONS_ENABLED'),
+  productAutopilotEnabled: envFlag('NEXT_PUBLIC_PRODUCT_AUTOPILOT_ENABLED') || envFlag('PRODUCT_AUTOPILOT_ENABLED'),
+  dispatchEnabled: envFlag('NEXT_PUBLIC_DISPATCH_ENABLED') || envFlag('DISPATCH_ENABLED'),
+};
+
+export function isProductAutopilotEnabled(): boolean {
+  return v1FeatureFlags.productAutopilotEnabled;
+}
+
 const DEFAULT_CONFIG: MissionControlConfig = {
   workspaceBasePath: '~/Documents/Shared',
   projectsPath: '~/Documents/Shared/projects',
