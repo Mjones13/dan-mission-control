@@ -27,6 +27,24 @@ export interface TelegramResolvedMessage {
   unavailableReason?: 'missing' | 'non_text';
 }
 
+export function inferTelegramChatActorLabel(chatTitle?: string | null): string | null {
+  const normalized = chatTitle?.toLowerCase() || '';
+  // These work-chat titles are stable today, and mapping them avoids leaking
+  // the transport name "Telegram" into message bubbles when senderName is null.
+  if (normalized.includes('finn')) return 'Finn';
+  if (normalized.includes('jace')) return 'Jace';
+  if (normalized.includes('leo')) return 'Leo';
+  return null;
+}
+
+export function telegramDisplaySenderLabel(
+  message: Pick<TelegramMessage, 'isOutgoing' | 'senderName'>,
+  chatTitle?: string | null,
+): string | null {
+  if (message.isOutgoing) return null;
+  return message.senderName?.trim() || inferTelegramChatActorLabel(chatTitle);
+}
+
 export function toReplyContextMessage(message: TelegramMessage): TelegramReplyContextMessage {
   return { ...message, status: 'loaded' };
 }

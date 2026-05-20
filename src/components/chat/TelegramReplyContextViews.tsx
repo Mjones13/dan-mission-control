@@ -3,31 +3,39 @@
 import { Loader, X } from 'lucide-react';
 import { LinkifiedText } from './LinkifiedText';
 import type { TelegramMessage } from './useTelegramChatInbox';
-import type { TelegramReplyContextMessage } from './telegramReplyContext';
+import { telegramDisplaySenderLabel, type TelegramReplyContextMessage } from './telegramReplyContext';
 
 function formatTime(value: string): string {
   if (!value) return '';
   return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
-function senderLabel(message: Pick<TelegramMessage, 'isOutgoing' | 'senderName'>): string {
-  if (message.isOutgoing) return 'You';
-  return message.senderName || 'Telegram';
-}
-
 interface ReplyPreviewProps {
   preview: TelegramReplyContextMessage;
   compact?: boolean;
+  onOpenThread?: () => void;
 }
 
-export function TelegramInlineReplyPreview({ preview, compact = false }: ReplyPreviewProps) {
+export function TelegramInlineReplyPreview({ preview, compact = false, onOpenThread }: ReplyPreviewProps) {
+  const previewClassName = `mb-2 flex w-full items-center gap-2 border-l-2 border-mc-accent/80 bg-black/15 px-2 py-1.5 text-left ${compact ? 'rounded text-[10px]' : 'rounded-md text-[11px]'}`;
+  const previewContent = (
+    <>
+      <span className="min-w-0 flex-1 truncate text-[#cbd6e2]">{preview.text}</span>
+      {onOpenThread && <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border border-mc-accent/50 text-xs font-semibold text-mc-accent">+</span>}
+    </>
+  );
+
+  if (onOpenThread) {
+    return (
+      <button type="button" onClick={onOpenThread} className={`${previewClassName} transition-colors hover:border-mc-accent hover:bg-mc-accent/10`} aria-label="Open reply context">
+        {previewContent}
+      </button>
+    );
+  }
+
   return (
-    <div className={`mb-2 border-l-2 border-mc-accent/80 bg-black/15 px-2 py-1.5 ${compact ? 'rounded text-[10px]' : 'rounded-md text-[11px]'}`}>
-      <div className="mb-0.5 flex items-center gap-2 font-semibold text-mc-accent">
-        <span className="truncate">{preview.status === 'loaded' ? senderLabel(preview) : 'Original message'}</span>
-        {preview.status !== 'loaded' && <span className="text-[#91a0af]">{preview.status === 'non_text' ? 'non-text' : 'unavailable'}</span>}
-      </div>
-      <p className="line-clamp-2 whitespace-pre-wrap break-words text-[#cbd6e2]">{preview.text}</p>
+    <div className={previewClassName}>
+      {previewContent}
     </div>
   );
 }
@@ -42,6 +50,7 @@ interface MessageBubbleProps {
   onReply(message: TelegramMessage): void;
   onOpenThread?(message: TelegramMessage): void;
   canOpenThread?: boolean;
+  chatTitle?: string;
 }
 
 export function TelegramMessageBubble({
@@ -54,19 +63,23 @@ export function TelegramMessageBubble({
   onReply,
   onOpenThread,
   canOpenThread = false,
+  chatTitle,
 }: MessageBubbleProps) {
+  const senderLabel = telegramDisplaySenderLabel(message, chatTitle);
+  const showHeaderThreadAffordance = canOpenThread && onOpenThread && !preview;
+
   return (
     <div className={message.isOutgoing ? (compact ? 'ml-6' : 'ml-8') : (compact ? 'mr-6' : 'mr-8')}>
       <div className={`rounded-lg border ${compact ? 'px-3 py-2.5' : 'px-3.5 py-2.5'} ${message.isOutgoing ? 'border-[#4f9ce8]/25 bg-[#234b73]' : 'border-[#314154] bg-[#17212f]'}`}>
         <div className="mb-2 flex items-center gap-3 text-[10px] text-[#aab3bd]">
-          <span>{senderLabel(message)}</span>
+          {senderLabel && <span>{senderLabel}</span>}
           {message.isOutgoing && message.reactionCount > 0 && <span className="text-[#c6d0dc]">✓ acknowledged</span>}
           <span className="flex-1" />
-          {canOpenThread && onOpenThread && <button onClick={() => onOpenThread(message)} className="hover:text-mc-accent">Thread</button>}
+          {showHeaderThreadAffordance && <button onClick={() => onOpenThread(message)} className="flex h-5 w-5 items-center justify-center rounded-full border border-mc-accent/50 text-xs font-semibold text-mc-accent hover:bg-mc-accent/10" aria-label="Open reply context">+</button>}
           <button onClick={() => onReply(message)} className="hover:text-mc-accent">Reply</button>
           <span className="text-[#91a0af]">{formatTime(message.sentAt)}</span>
         </div>
-        {preview && <TelegramInlineReplyPreview preview={preview} compact={compact} />}
+        {preview && <TelegramInlineReplyPreview preview={preview} compact={compact} onOpenThread={canOpenThread && onOpenThread ? () => onOpenThread(message) : undefined} />}
         <LinkifiedText className="whitespace-pre-wrap text-sm leading-relaxed text-[#fbfdff]">{message.text}</LinkifiedText>
         {showReadMarker && onToggleRead && (
           <div className="mt-2 flex justify-end">
@@ -98,6 +111,7 @@ interface ThreadModalProps {
   onClose(): void;
   onLoadEarlier(): void;
   onReply(message: TelegramReplyContextMessage): void;
+  chatTitle?: string;
 }
 
 export function TelegramReplyContextModal({
@@ -111,6 +125,7 @@ export function TelegramReplyContextModal({
   onClose,
   onLoadEarlier,
   onReply,
+  chatTitle,
 }: ThreadModalProps) {
   if (!open) return null;
 
@@ -154,20 +169,24 @@ export function TelegramReplyContextModal({
               <Loader className="mr-2 h-3.5 w-3.5 animate-spin" /> Loading reply context…
             </div>
           )}
-          {messages.map((message) => (
-            <div key={`${message.id}-${message.status}`} className={message.isOutgoing ? 'ml-8' : 'mr-8'}>
-              <div className={`rounded-lg border px-3.5 py-2.5 ${message.status === 'loaded' ? (message.isOutgoing ? 'border-[#4f9ce8]/25 bg-[#234b73]' : 'border-[#314154] bg-[#17212f]') : 'border-dashed border-mc-border bg-mc-bg/70'}`}>
-                <div className="mb-2 flex items-center gap-3 text-[10px] text-[#aab3bd]">
-                  <span>{message.status === 'loaded' ? senderLabel(message) : 'Original message'}</span>
-                  {message.status !== 'loaded' && <span className="text-[#91a0af]">{message.status === 'non_text' ? 'non-text' : 'unavailable'}</span>}
-                  <span className="flex-1" />
-                  {message.status === 'loaded' && <button onClick={() => onReply(message)} className="hover:text-mc-accent">Reply</button>}
-                  <span className="text-[#91a0af]">{formatTime(message.sentAt)}</span>
+          {messages.map((message) => {
+            const displayLabel = message.status === 'loaded' ? telegramDisplaySenderLabel(message, chatTitle) : 'Original message';
+
+            return (
+              <div key={`${message.id}-${message.status}`} className={message.isOutgoing ? 'ml-8' : 'mr-8'}>
+                <div className={`rounded-lg border px-3.5 py-2.5 ${message.status === 'loaded' ? (message.isOutgoing ? 'border-[#4f9ce8]/25 bg-[#234b73]' : 'border-[#314154] bg-[#17212f]') : 'border-dashed border-mc-border bg-mc-bg/70'}`}>
+                  <div className="mb-2 flex items-center gap-3 text-[10px] text-[#aab3bd]">
+                    {displayLabel && <span>{displayLabel}</span>}
+                    {message.status !== 'loaded' && <span className="text-[#91a0af]">{message.status === 'non_text' ? 'non-text' : 'unavailable'}</span>}
+                    <span className="flex-1" />
+                    {message.status === 'loaded' && <button onClick={() => onReply(message)} className="hover:text-mc-accent">Reply</button>}
+                    <span className="text-[#91a0af]">{formatTime(message.sentAt)}</span>
+                  </div>
+                  <LinkifiedText className="whitespace-pre-wrap text-sm leading-relaxed text-[#fbfdff]">{message.text}</LinkifiedText>
                 </div>
-                <LinkifiedText className="whitespace-pre-wrap text-sm leading-relaxed text-[#fbfdff]">{message.text}</LinkifiedText>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
         <footer className="border-t border-mc-border px-4 py-2 text-[11px] text-[#9aa6b2]">
           Replying here uses the main composer below; the context stays open while you type.

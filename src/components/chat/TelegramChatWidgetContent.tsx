@@ -202,6 +202,7 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
               showReadMarker={!message.isOutgoing && Boolean(selectedChat)}
               readMarked={selectedChat ? isMarkedRead(selectedChat.id, message.id) : false}
               onToggleRead={selectedChat ? () => toggleReadMarker(selectedChat.id, message.id) : undefined}
+              chatTitle={selectedChat?.title}
             />
           ))}
         </div>
@@ -264,6 +265,7 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
         onClose={handleCloseThread}
         onLoadEarlier={() => void replyContext.loadEarlierInThread()}
         onReply={handleReplyFromThread}
+        chatTitle={selectedChat?.title}
       />
     </div>
   );

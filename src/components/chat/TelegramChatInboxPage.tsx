@@ -17,6 +17,7 @@ export function TelegramChatInboxPage() {
   const {
     chats,
     selectedChatId,
+    selectedChatTitle,
     selectedMessages: messages,
     selectedCacheEntry,
     loadingChats,
@@ -231,6 +232,7 @@ export function TelegramChatInboxPage() {
                       showReadMarker={!message.isOutgoing && Boolean(selectedChatId)}
                       readMarked={selectedChatId ? isMarkedRead(selectedChatId, message.id) : false}
                       onToggleRead={selectedChatId ? () => toggleReadMarker(selectedChatId, message.id) : undefined}
+                      chatTitle={selectedChatTitle}
                     />
                   ))}
                 </div>
@@ -283,6 +285,7 @@ export function TelegramChatInboxPage() {
           onClose={handleCloseThread}
           onLoadEarlier={() => void replyContext.loadEarlierInThread()}
           onReply={handleReplyFromThread}
+          chatTitle={selectedChatTitle}
         />
       </div>
     </main>

@@ -6,10 +6,12 @@ import {
   createReplyContextLookup,
   createUnavailableReplyContextMessage,
   getInlineReplyPreview,
+  inferTelegramChatActorLabel,
   latestLoadedThreadMessage,
   loadReplyContextBatch,
   resolvedMessageToContextMessage,
   shouldOfferThreadAction,
+  telegramDisplaySenderLabel,
   toReplyContextMessage,
   type TelegramResolvedMessage,
 } from './telegramReplyContext';
@@ -29,6 +31,21 @@ function message(id: number, overrides: Partial<TelegramMessage> = {}): Telegram
     ...overrides,
   };
 }
+
+test('telegramDisplaySenderLabel omits outgoing labels and maps stable work chat names', () => {
+  assert.equal(telegramDisplaySenderLabel(message(1, { isOutgoing: true }), 'Finn Work'), null);
+  assert.equal(telegramDisplaySenderLabel(message(2), 'Finn Work'), 'Finn');
+  assert.equal(telegramDisplaySenderLabel(message(3), 'Jace Work'), 'Jace');
+  assert.equal(telegramDisplaySenderLabel(message(4), 'Leo Fitness'), 'Leo');
+  assert.equal(telegramDisplaySenderLabel(message(5, { senderName: 'Actual Sender' }), 'Finn Work'), 'Actual Sender');
+  assert.equal(telegramDisplaySenderLabel(message(6), 'General Chat'), null);
+});
+
+test('inferTelegramChatActorLabel recognizes current agent/work chats', () => {
+  assert.equal(inferTelegramChatActorLabel('Finn Work'), 'Finn');
+  assert.equal(inferTelegramChatActorLabel('Jace Work'), 'Jace');
+  assert.equal(inferTelegramChatActorLabel('Leo Fitness'), 'Leo');
+});
 
 test('getInlineReplyPreview resolves reply parents from local cache first', () => {
   const parent = message(10, { text: 'parent text' });
