@@ -193,7 +193,7 @@ function CopyableToken({ value, type }: { value: string; type: 'slash-token' | '
         {value}
       </button>
       {copied && (
-        <span className="pointer-events-none absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-full rounded bg-mc-bg px-1.5 py-0.5 text-[10px] font-medium text-mc-accent shadow-lg ring-1 ring-mc-accent/40">
+        <span className="pointer-events-none absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-full rounded bg-mc-bg px-1.5 py-0.5 text-sm font-medium text-[#fbfdff] shadow-lg ring-1 ring-mc-accent/40">
           Copied
         </span>
       )}
