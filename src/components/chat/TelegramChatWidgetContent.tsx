@@ -5,6 +5,7 @@ import { ChevronLeft, Loader } from 'lucide-react';
 import { LinkifiedText } from './LinkifiedText';
 import { TELEGRAM_TEXT_MESSAGE_LIMIT, splitTelegramMessageText } from '@/lib/telegram/message-chunks';
 import { useTelegramChatInbox, type TelegramMessage } from './useTelegramChatInbox';
+import { getTelegramChatEmoji } from './telegramChatDisplay';
 import { useTelegramAgentReadMarkers } from './useTelegramAgentReadMarkers';
 
 interface TelegramChatWidgetContentProps {
@@ -111,6 +112,9 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
             >
               {selectedChat?.id === chat.id && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-mc-accent shadow-[0_0_8px_rgba(88,166,255,0.9)]" aria-label="Selected chat" />}
               <div className="flex items-center gap-2 pr-3">
+                <span className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-base leading-none ${selectedChat?.id === chat.id ? 'bg-mc-accent/45 ring-2 ring-mc-accent/80' : 'bg-mc-bg-tertiary'}`}>
+                  {getTelegramChatEmoji(chat)}
+                </span>
                 <span className={`min-w-0 flex-1 truncate text-sm font-semibold leading-snug ${selectedChat?.id === chat.id ? 'text-white' : 'text-[#eef2f7]'}`}>{chat.title}</span>
                 {chat.unreadCount > 0 && (
                   <span className="rounded-full bg-mc-accent px-1.5 text-[10px] font-bold text-mc-bg">{chat.unreadCount}</span>
