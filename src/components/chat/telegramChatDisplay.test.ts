@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { isTelegramBridgeStatusMessage } from '@/lib/telegram/bridge-status';
 import {
   getTelegramChatEmoji,
   isTelegramBridgeStatusText,
@@ -37,6 +38,10 @@ test('getTelegramChatEmoji falls back to title matches when chat ids are unavail
 
 test('getTelegramChatEmoji uses the generic chat bubble for unknown chats', () => {
   assert.equal(getTelegramChatEmoji({ id: 'other', title: 'Other Group' }), '💬');
+});
+
+test('isTelegramBridgeStatusText reuses the shared Telegram bridge status matcher', () => {
+  assert.equal(isTelegramBridgeStatusText, isTelegramBridgeStatusMessage);
 });
 
 test('isTelegramBridgeStatusText matches known low-value bridge status patterns', () => {
