@@ -30,6 +30,9 @@ async function clearUnreadBridgeStatusMessages(
 
   if (bridgeMessageIds.length === 0) return 0;
 
+  // Telegram marks every unread message up to maxId as read. Use the newest
+  // matching bridge/status message so stale progress updates stop inflating
+  // Mission Control's unread badge without changing the shared classifier.
   const maxBridgeMessageId = Math.max(...bridgeMessageIds);
   await client.markAsRead(dialog.inputEntity, undefined, { maxId: maxBridgeMessageId });
   return bridgeMessageIds.length;

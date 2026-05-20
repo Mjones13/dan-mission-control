@@ -3,7 +3,6 @@ import test from 'node:test';
 import { isTelegramBridgeStatusMessage } from '@/lib/telegram/bridge-status';
 import {
   getTelegramChatEmoji,
-  isTelegramBridgeStatusText,
   RECENT_STATUS_MESSAGE_WINDOW,
   visibleTelegramMessages,
 } from './telegramChatDisplay';
@@ -40,11 +39,7 @@ test('getTelegramChatEmoji uses the generic chat bubble for unknown chats', () =
   assert.equal(getTelegramChatEmoji({ id: 'other', title: 'Other Group' }), '💬');
 });
 
-test('isTelegramBridgeStatusText reuses the shared Telegram bridge status matcher', () => {
-  assert.equal(isTelegramBridgeStatusText, isTelegramBridgeStatusMessage);
-});
-
-test('isTelegramBridgeStatusText matches known low-value bridge status patterns', () => {
+test('the shared Telegram bridge status matcher matches known low-value bridge status patterns', () => {
   for (const text of [
     'Brining...',
     'Bringing...',
@@ -58,11 +53,11 @@ test('isTelegramBridgeStatusText matches known low-value bridge status patterns'
     '🔧 Edit: src/file.ts',
     '🔧 Patch: update',
   ]) {
-    assert.equal(isTelegramBridgeStatusText(text), true, text);
+    assert.equal(isTelegramBridgeStatusMessage(text), true, text);
   }
 });
 
-test('isTelegramBridgeStatusText does not match normal human text or empty text', () => {
+test('the shared Telegram bridge status matcher does not match normal human text or empty text', () => {
   for (const text of [
     'Can you take a look at this?',
     'Message me when ready',
@@ -71,7 +66,7 @@ test('isTelegramBridgeStatusText does not match normal human text or empty text'
     null,
     undefined,
   ]) {
-    assert.equal(isTelegramBridgeStatusText(text), false, String(text));
+    assert.equal(isTelegramBridgeStatusMessage(text), false, String(text));
   }
 });
 
