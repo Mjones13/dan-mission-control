@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, Loader, MessageSquare } from 'lucide-react';
 import { TELEGRAM_TEXT_MESSAGE_LIMIT, splitTelegramMessageText } from '@/lib/telegram/message-chunks';
 import { useTelegramChatInbox, type TelegramMessage } from './useTelegramChatInbox';
-import { getTelegramChatEmoji } from './telegramChatDisplay';
+import { getTelegramChatEmoji, visibleTelegramMessages } from './telegramChatDisplay';
 import { useTelegramAgentReadMarkers } from './useTelegramAgentReadMarkers';
 import { playTelegramSentSound, primeTelegramSentSound } from '@/lib/audio/telegramSentSound';
 import { canStartTelegramSend, recoverFailedTelegramDraft, shouldSendTelegramComposerFromKeyDown, telegramSendButtonClassName } from './telegramComposerSendState';
@@ -34,7 +34,7 @@ export function TelegramChatInboxPage() {
   } = useTelegramChatInbox();
   const [composerText, setComposerText] = useState('');
   const [replyingTo, setReplyingTo] = useState<TelegramMessage | null>(null);
-  const { isMarkedRead, markReadMarker, markReplyParentsRead, toggleReadMarker } = useTelegramAgentReadMarkers();
+  const { getMarkerState, markReadMarker, markReplyParentsRead, cycleMarker } = useTelegramAgentReadMarkers();
   const replyContext = useTelegramReplyContext({ chatId: selectedChatId, messages });
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(true);
@@ -43,6 +43,7 @@ export function TelegramChatInboxPage() {
   const trimmedComposerText = composerText.trim();
   const composerChunks = splitTelegramMessageText(trimmedComposerText);
   const composerChunkCount = composerChunks.length;
+  const renderedMessages = useMemo(() => visibleTelegramMessages(messages), [messages]);
 
   useEffect(() => {
     const previousChatId = previousChatIdRef.current;
@@ -136,6 +137,32 @@ export function TelegramChatInboxPage() {
     setReplyingTo(null);
   };
 
+  const renderMessageMarkerButton = (chatId: string, messageId: number) => {
+    const markerState = getMarkerState(chatId, messageId);
+    const markerLabel = markerState.displayState === 'starred'
+      ? 'Clear local read and follow-up markers'
+      : markerState.displayState === 'read'
+        ? 'Star this message for follow-up'
+        : 'Mark this message read locally';
+    const markerClassName = markerState.displayState === 'starred'
+      ? 'border-yellow-300 bg-yellow-300 text-mc-bg shadow-[0_0_8px_rgba(253,224,71,0.35)] hover:border-yellow-200 hover:bg-yellow-200'
+      : markerState.displayState === 'read'
+        ? 'border-mc-accent bg-mc-accent text-mc-bg shadow-[0_0_8px_rgba(88,166,255,0.35)] hover:border-[#8ec5ff] hover:bg-[#8ec5ff]'
+        : 'border-mc-border text-transparent hover:border-mc-accent hover:text-mc-accent';
+
+    return (
+      <button
+        type="button"
+        onClick={() => cycleMarker(chatId, messageId)}
+        aria-label={markerLabel}
+        className={`flex h-6 w-6 items-center justify-center rounded-full border text-sm leading-none transition-colors ${markerClassName}`}
+        title={markerLabel}
+      >
+        {markerState.displayState === 'starred' ? '★' : markerState.displayState === 'read' ? '✓' : ''}
+      </button>
+    );
+  };
+
   return (
     <main className="min-h-screen bg-mc-bg p-2 text-[#f5f7fb] md:p-4" style={{ fontFamily: CHAT_FONT_FAMILY }}>
       <div className="mx-auto flex h-[calc(100vh-1rem)] max-w-[88rem] flex-col overflow-hidden rounded-2xl border border-mc-border bg-mc-bg-secondary shadow-2xl shadow-black/30 md:h-[calc(100vh-2rem)]">
@@ -221,7 +248,7 @@ export function TelegramChatInboxPage() {
                       </button>
                     </div>
                   )}
-                  {messages.map((message) => (
+                  {renderedMessages.map((message) => (
                     <TelegramMessageBubble
                       key={message.id}
                       message={message}
@@ -230,8 +257,7 @@ export function TelegramChatInboxPage() {
                       onOpenThread={(threadMessage) => void replyContext.openThread(threadMessage)}
                       onReply={setReplyingTo}
                       showReadMarker={!message.isOutgoing && Boolean(selectedChatId)}
-                      readMarked={selectedChatId ? isMarkedRead(selectedChatId, message.id) : false}
-                      onToggleRead={selectedChatId ? () => toggleReadMarker(selectedChatId, message.id) : undefined}
+                      readMarkerNode={selectedChatId ? renderMessageMarkerButton(selectedChatId, message.id) : undefined}
                       chatTitle={selectedChatTitle}
                     />
                   ))}
