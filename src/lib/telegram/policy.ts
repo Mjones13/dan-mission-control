@@ -14,9 +14,9 @@ export interface TelegramPollingPolicy {
 export const STABLE_TELEGRAM_POLLING_POLICY: TelegramPollingPolicy = {
   environment: 'stable',
   pollingMode: 'normal',
-  chatListPollMs: 60_000,
-  selectedChatPollMs: 30_000,
-  badgePollMs: 60_000,
+  chatListPollMs: 15_000,
+  selectedChatPollMs: 10_000,
+  badgePollMs: 30_000,
   pollWhenHidden: false,
   manualRefreshOnly: false,
 };
