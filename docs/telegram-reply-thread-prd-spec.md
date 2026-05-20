@@ -248,6 +248,8 @@ Conclusion: Finn/OpenClaw can probably reply to the current inbound message reli
 6. Clicking or focusing the parent-page composer/textbox behind or near the modal must **not** close the modal, so M Jones can type while looking at the context.
 7. Each message row in the modal should preserve basic sender/time/body and reply preview context.
 8. V1 loads parent ancestry/context upward, not exhaustive child replies downward.
+9. While the modal is open, the parent-page composer should default to replying to the newest/latest loaded message visible in the displayed chain, so sends continue the thread without duplicating a composer inside the modal.
+10. When a send succeeds while the modal is open, append the sent message to the visible chain and advance the default composer reply target to that new latest message where feasible; V1 still may miss sibling/parallel child branches because it does not perform exhaustive child-reply discovery.
 
 ### Performance and privacy requirements
 

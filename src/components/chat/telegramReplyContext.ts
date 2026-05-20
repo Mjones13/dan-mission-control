@@ -75,6 +75,16 @@ export function shouldOfferThreadAction(message: Pick<TelegramMessage, 'id' | 'r
   return localMessages.some((candidate) => candidate.replyToMessageId === message.id);
 }
 
+export function latestLoadedThreadMessage(threadMessages: TelegramReplyContextMessage[]): TelegramMessage | null {
+  for (let index = threadMessages.length - 1; index >= 0; index -= 1) {
+    const candidate = threadMessages[index];
+    if (candidate.status !== 'loaded') continue;
+    const { status: _status, ...message } = candidate;
+    return message;
+  }
+  return null;
+}
+
 export async function loadReplyContextBatch(
   anchor: TelegramReplyContextMessage,
   lookup: (id: number) => TelegramReplyContextMessage | null,

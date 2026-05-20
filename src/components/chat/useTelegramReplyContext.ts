@@ -6,6 +6,7 @@ import {
   TELEGRAM_REPLY_CONTEXT_BATCH_SIZE,
   createReplyContextLookup,
   createUnavailableReplyContextMessage,
+  latestLoadedThreadMessage,
   loadReplyContextBatch,
   resolvedMessageToContextMessage,
   shouldOfferThreadAction,
@@ -27,10 +28,12 @@ export interface UseTelegramReplyContextResult {
   threadLoadingEarlier: boolean;
   threadError: string | null;
   threadHasEarlier: boolean;
+  threadReplyTarget: TelegramMessage | null;
   canOpenThread(message: TelegramMessage): boolean;
   openThread(message: TelegramMessage): Promise<void>;
   closeThread(): void;
   loadEarlierInThread(): Promise<void>;
+  appendMessagesToThread(messages: TelegramMessage[]): void;
 }
 
 async function fetchResolvedMessages(chatId: string, ids: number[]): Promise<TelegramResolvedMessage[]> {
@@ -119,6 +122,8 @@ export function useTelegramReplyContext({ chatId, messages }: UseTelegramReplyCo
     return previewByMessageId;
   }, [lookup, messages]);
 
+  const threadReplyTarget = useMemo(() => latestLoadedThreadMessage(threadMessages), [threadMessages]);
+
   const canOpenThread = useCallback((message: TelegramMessage) => shouldOfferThreadAction(message, messages), [messages]);
 
   const openThread = useCallback(async (message: TelegramMessage) => {
@@ -164,6 +169,16 @@ export function useTelegramReplyContext({ chatId, messages }: UseTelegramReplyCo
     }
   }, [chatId, lookup, resolveOne, threadLoadingEarlier, threadMessages]);
 
+  const appendMessagesToThread = useCallback((sentMessages: TelegramMessage[]) => {
+    if (sentMessages.length === 0) return;
+    setThreadMessages((current) => {
+      if (current.length === 0) return current;
+      const existingIds = new Set(current.map((message) => message.id));
+      const appended = sentMessages.filter((message) => !existingIds.has(message.id)).map(toReplyContextMessage);
+      return appended.length ? [...current, ...appended] : current;
+    });
+  }, []);
+
   return {
     inlinePreviewByMessageId,
     threadAnchor,
@@ -172,9 +187,11 @@ export function useTelegramReplyContext({ chatId, messages }: UseTelegramReplyCo
     threadLoadingEarlier,
     threadError,
     threadHasEarlier,
+    threadReplyTarget,
     canOpenThread,
     openThread,
     closeThread,
     loadEarlierInThread,
+    appendMessagesToThread,
   };
 }

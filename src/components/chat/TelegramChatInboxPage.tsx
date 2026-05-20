@@ -90,13 +90,18 @@ export function TelegramChatInboxPage() {
     await loadOlderMessages();
   };
 
+  useEffect(() => {
+    if (!replyContext.threadAnchor || !replyContext.threadReplyTarget) return;
+    setReplyingTo((current) => (current?.id === replyContext.threadReplyTarget?.id ? current : replyContext.threadReplyTarget));
+  }, [replyContext.threadAnchor, replyContext.threadReplyTarget]);
+
   const handleSendMessage = async () => {
     if (!canStartTelegramSend(composerText, sending)) return;
 
     primeTelegramSentSound();
     const attemptedText = composerText;
     const followSentMessagesToBottom = isNearBottomRef.current;
-    const replyParent = replyingTo;
+    const replyParent = replyingTo || replyContext.threadReplyTarget;
     setComposerText('');
     const result = await sendMessage(attemptedText, replyParent);
     shouldScrollToBottomRef.current = followSentMessagesToBottom;
@@ -106,7 +111,12 @@ export function TelegramChatInboxPage() {
       if (selectedChatId && replyParent && !replyParent.isOutgoing) {
         markReadMarker(selectedChatId, replyParent.id);
       }
-      setReplyingTo(null);
+      if (replyContext.threadAnchor) {
+        replyContext.appendMessagesToThread(result.sentMessages);
+        setReplyingTo(result.sentMessages.at(-1) || replyContext.threadReplyTarget);
+      } else {
+        setReplyingTo(null);
+      }
     } else {
       setComposerText((current) => recoverFailedTelegramDraft(current, result.unsentText));
     }

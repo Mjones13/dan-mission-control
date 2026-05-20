@@ -5,6 +5,7 @@ import {
   createReplyContextLookup,
   createUnavailableReplyContextMessage,
   getInlineReplyPreview,
+  latestLoadedThreadMessage,
   loadReplyContextBatch,
   resolvedMessageToContextMessage,
   shouldOfferThreadAction,
@@ -97,4 +98,24 @@ test('shouldOfferThreadAction covers parent replies and cached child replies', (
 
   assert.equal(shouldOfferThreadAction(child, [parent, child]), true);
   assert.equal(shouldOfferThreadAction(parent, [parent, child]), true);
+});
+
+test('latestLoadedThreadMessage selects newest visible loaded thread message for composer reply target', () => {
+  const parent = toReplyContextMessage(message(1));
+  const anchor = toReplyContextMessage(message(2, { replyToMessageId: 1 }));
+  const sentFollowUp = toReplyContextMessage(message(3, { isOutgoing: true, replyToMessageId: 2 }));
+
+  const target = latestLoadedThreadMessage([parent, anchor, sentFollowUp]);
+
+  assert.equal(target?.id, 3);
+  assert.equal(target?.replyToMessageId, 2);
+});
+
+test('latestLoadedThreadMessage skips unavailable messages when defaulting composer reply target', () => {
+  const parent = toReplyContextMessage(message(1));
+  const unavailable = createUnavailableReplyContextMessage(2, 'chat-1', 'missing');
+
+  const target = latestLoadedThreadMessage([parent, unavailable]);
+
+  assert.equal(target?.id, 1);
 });
