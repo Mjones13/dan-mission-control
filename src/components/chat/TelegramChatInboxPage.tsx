@@ -5,6 +5,7 @@ import { ChevronLeft, Loader, MessageSquare } from 'lucide-react';
 import { LinkifiedText } from './LinkifiedText';
 import { TELEGRAM_TEXT_MESSAGE_LIMIT, splitTelegramMessageText } from '@/lib/telegram/message-chunks';
 import { useTelegramChatInbox, type TelegramMessage } from './useTelegramChatInbox';
+import { useTelegramAgentReadMarkers } from './useTelegramAgentReadMarkers';
 
 const CHAT_FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif';
 
@@ -32,6 +33,7 @@ export function TelegramChatInboxPage() {
   } = useTelegramChatInbox();
   const [composerText, setComposerText] = useState('');
   const [replyingTo, setReplyingTo] = useState<TelegramMessage | null>(null);
+  const { isMarkedRead, toggleReadMarker } = useTelegramAgentReadMarkers();
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(true);
   const isNearBottomRef = useRef(true);
@@ -185,7 +187,19 @@ export function TelegramChatInboxPage() {
                         <div className="mb-2 flex items-center gap-3 text-[10px] text-[#aab3bd]">
                           <span>{message.isOutgoing ? 'You' : 'Telegram'}</span>
                           {message.isOutgoing && message.reactionCount > 0 && <span className="text-[#c6d0dc]">✓ acknowledged</span>}
-                          <button onClick={() => setReplyingTo(message)} className="ml-auto mr-1.5 hover:text-mc-accent">Reply</button>
+                          <span className="flex-1" />
+                          {!message.isOutgoing && selectedChatId && (
+                            <button
+                              type="button"
+                              onClick={() => toggleReadMarker(selectedChatId, message.id)}
+                              aria-pressed={isMarkedRead(selectedChatId, message.id)}
+                              className={`rounded-full px-2 py-0.5 transition-colors ${isMarkedRead(selectedChatId, message.id) ? 'bg-mc-accent text-mc-bg shadow-[0_0_8px_rgba(88,166,255,0.35)]' : 'border border-mc-border text-[#9aa6b2] hover:border-mc-accent hover:text-mc-accent'}`}
+                              title={isMarkedRead(selectedChatId, message.id) ? 'Marked read locally' : 'Mark this message read locally'}
+                            >
+                              {isMarkedRead(selectedChatId, message.id) ? '✓ read' : 'Mark read'}
+                            </button>
+                          )}
+                          <button onClick={() => setReplyingTo(message)} className="mr-1.5 hover:text-mc-accent">Reply</button>
                           <span className="text-[#91a0af]">{formatTime(message.sentAt)}</span>
                         </div>
                         <LinkifiedText className="whitespace-pre-wrap text-sm leading-relaxed text-[#fbfdff]">{message.text}</LinkifiedText>
