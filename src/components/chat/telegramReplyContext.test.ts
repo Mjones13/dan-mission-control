@@ -1,0 +1,100 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import type { TelegramMessage } from './useTelegramChatInbox';
+import {
+  createReplyContextLookup,
+  createUnavailableReplyContextMessage,
+  getInlineReplyPreview,
+  loadReplyContextBatch,
+  resolvedMessageToContextMessage,
+  shouldOfferThreadAction,
+  toReplyContextMessage,
+  type TelegramResolvedMessage,
+} from './telegramReplyContext';
+
+function message(id: number, overrides: Partial<TelegramMessage> = {}): TelegramMessage {
+  return {
+    id,
+    chatId: 'chat-1',
+    text: `message ${id}`,
+    senderId: null,
+    senderName: null,
+    isOutgoing: false,
+    reactionCount: 0,
+    sentAt: new Date(id * 1000).toISOString(),
+    replyToMessageId: null,
+    editedAt: null,
+    ...overrides,
+  };
+}
+
+test('getInlineReplyPreview resolves reply parents from local cache first', () => {
+  const parent = message(10, { text: 'parent text' });
+  const child = message(11, { replyToMessageId: 10 });
+
+  const preview = getInlineReplyPreview(child, [parent, child], {});
+
+  assert.equal(preview?.id, 10);
+  assert.equal(preview?.text, 'parent text');
+  assert.equal(preview?.status, 'loaded');
+});
+
+test('getInlineReplyPreview uses resolved stale/missing parent fallback', () => {
+  const child = message(11, { replyToMessageId: 10 });
+  const missing = createUnavailableReplyContextMessage(10, 'chat-1', 'missing');
+
+  const preview = getInlineReplyPreview(child, [child], { 10: missing });
+
+  assert.equal(preview?.id, 10);
+  assert.equal(preview?.status, 'missing');
+  assert.match(preview?.text || '', /unavailable/);
+});
+
+test('loadReplyContextBatch loads parent ancestry in bounded batches', async () => {
+  const messages = [
+    message(1),
+    message(2, { replyToMessageId: 1 }),
+    message(3, { replyToMessageId: 2 }),
+    message(4, { replyToMessageId: 3 }),
+    message(5, { replyToMessageId: 4 }),
+    message(6, { replyToMessageId: 5 }),
+  ];
+  const lookup = createReplyContextLookup(messages, {});
+
+  const result = await loadReplyContextBatch(toReplyContextMessage(messages[5]), lookup, async (id) => {
+    throw new Error(`unexpected resolve ${id}`);
+  }, 5);
+
+  assert.deepEqual(result.ancestors.map((item) => item.id), [1, 2, 3, 4, 5]);
+  assert.equal(result.reachedRoot, true);
+});
+
+test('loadReplyContextBatch fetches parent of oldest known chain until root', async () => {
+  const known = [message(5, { replyToMessageId: 4 }), message(6, { replyToMessageId: 5 })];
+  const remote = new Map([
+    [4, toReplyContextMessage(message(4, { replyToMessageId: 3 }))],
+    [3, toReplyContextMessage(message(3))],
+  ]);
+  const lookup = createReplyContextLookup(known, {});
+
+  const result = await loadReplyContextBatch(toReplyContextMessage(known[0]), lookup, async (id) => remote.get(id)!, 5);
+
+  assert.deepEqual(result.ancestors.map((item) => item.id), [3, 4]);
+  assert.equal(result.reachedRoot, true);
+});
+
+test('resolvedMessageToContextMessage preserves non-text fallback status', () => {
+  const resolved: TelegramResolvedMessage = { id: 42, message: null, unavailableReason: 'non_text' };
+  const contextMessage = resolvedMessageToContextMessage(resolved, 'chat-1');
+
+  assert.equal(contextMessage.id, 42);
+  assert.equal(contextMessage.status, 'non_text');
+});
+
+test('shouldOfferThreadAction covers parent replies and cached child replies', () => {
+  const parent = message(1);
+  const child = message(2, { replyToMessageId: 1 });
+
+  assert.equal(shouldOfferThreadAction(child, [parent, child]), true);
+  assert.equal(shouldOfferThreadAction(parent, [parent, child]), true);
+});

@@ -15,6 +15,12 @@ export interface TelegramTextMessage {
   editedAt: string | null;
 }
 
+export interface TelegramResolvedTextMessage {
+  id: number;
+  message: TelegramTextMessage | null;
+  unavailableReason?: 'missing' | 'non_text';
+}
+
 function bigIntToString(value: bigInt.BigInteger | undefined): string | null {
   return value ? value.toString() : null;
 }
@@ -86,6 +92,32 @@ export async function listTelegramGroupChatMessages(chatId: string, options: Lis
       .filter((message): message is TelegramTextMessage => message !== null);
 
     return afterMessageId ? textMessages : textMessages.reverse();
+  } finally {
+    await client.disconnect();
+  }
+}
+
+export async function resolveTelegramGroupChatMessages(chatId: string, ids: number[]): Promise<TelegramResolvedTextMessage[]> {
+  const uniqueIds = Array.from(new Set(ids.filter((id) => Number.isInteger(id) && id > 0))).slice(0, 25);
+  if (uniqueIds.length === 0) return [];
+
+  const client = createTelegramClient();
+  await client.connect();
+
+  try {
+    const dialog = await findAuthorizedGroupDialog(client, chatId);
+    const messages = await client.getMessages(dialog.inputEntity, { ids: uniqueIds });
+    const byId = new Map<number, TelegramResolvedTextMessage>();
+
+    for (const item of messages) {
+      if (!(item instanceof Api.Message)) continue;
+      const normalized = messageToTextMessage(item, chatId);
+      byId.set(item.id, normalized
+        ? { id: item.id, message: normalized }
+        : { id: item.id, message: null, unavailableReason: 'non_text' });
+    }
+
+    return uniqueIds.map((id) => byId.get(id) || { id, message: null, unavailableReason: 'missing' });
   } finally {
     await client.disconnect();
   }

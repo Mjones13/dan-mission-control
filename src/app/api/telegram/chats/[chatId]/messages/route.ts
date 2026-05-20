@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listTelegramGroupChatMessages, markTelegramGroupChatRead, sendTelegramGroupChatMessage } from '@/lib/telegram/messages';
+import { listTelegramGroupChatMessages, markTelegramGroupChatRead, resolveTelegramGroupChatMessages, sendTelegramGroupChatMessage } from '@/lib/telegram/messages';
 import { toTelegramSafeError } from '@/lib/telegram/errors';
 import { parseTelegramMessagesQuery } from './params';
 
@@ -37,7 +37,9 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
   }
 
   try {
-    const messages = await listTelegramGroupChatMessages(params.chatId, query);
+    const messages = query.ids
+      ? await resolveTelegramGroupChatMessages(params.chatId, query.ids)
+      : await listTelegramGroupChatMessages(params.chatId, query);
     return NextResponse.json({ messages });
   } catch (error) {
     return handleTelegramMessageError(error);

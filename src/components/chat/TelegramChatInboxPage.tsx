@@ -2,19 +2,16 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, Loader, MessageSquare } from 'lucide-react';
-import { LinkifiedText } from './LinkifiedText';
 import { TELEGRAM_TEXT_MESSAGE_LIMIT, splitTelegramMessageText } from '@/lib/telegram/message-chunks';
 import { useTelegramChatInbox, type TelegramMessage } from './useTelegramChatInbox';
 import { getTelegramChatEmoji } from './telegramChatDisplay';
 import { useTelegramAgentReadMarkers } from './useTelegramAgentReadMarkers';
 import { playTelegramSentSound, primeTelegramSentSound } from '@/lib/audio/telegramSentSound';
 import { canStartTelegramSend, recoverFailedTelegramDraft, shouldSendTelegramComposerFromKeyDown, telegramSendButtonClassName } from './telegramComposerSendState';
+import { useTelegramReplyContext } from './useTelegramReplyContext';
+import { TelegramMessageBubble, TelegramReplyContextModal } from './TelegramReplyContextViews';
 
 const CHAT_FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif';
-
-function formatTime(value: string): string {
-  return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-}
 
 export function TelegramChatInboxPage() {
   const {
@@ -37,6 +34,7 @@ export function TelegramChatInboxPage() {
   const [composerText, setComposerText] = useState('');
   const [replyingTo, setReplyingTo] = useState<TelegramMessage | null>(null);
   const { isMarkedRead, markReadMarker, markReplyParentsRead, toggleReadMarker } = useTelegramAgentReadMarkers();
+  const replyContext = useTelegramReplyContext({ chatId: selectedChatId, messages });
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(true);
   const isNearBottomRef = useRef(true);
@@ -51,9 +49,10 @@ export function TelegramChatInboxPage() {
       shouldScrollToBottomRef.current = !selectedCacheEntry?.messages.length;
       isNearBottomRef.current = true;
       setReplyingTo(null);
+      replyContext.closeThread();
     }
     previousChatIdRef.current = selectedChatId;
-  }, [selectedCacheEntry?.messages.length, selectedChatId]);
+  }, [replyContext, selectedCacheEntry?.messages.length, selectedChatId]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -111,6 +110,10 @@ export function TelegramChatInboxPage() {
     } else {
       setComposerText((current) => recoverFailedTelegramDraft(current, result.unsentText));
     }
+  };
+
+  const handleReplyFromThread = (message: TelegramMessage) => {
+    setReplyingTo(message);
   };
 
   return (
@@ -199,32 +202,17 @@ export function TelegramChatInboxPage() {
                     </div>
                   )}
                   {messages.map((message) => (
-                    <div key={message.id} className={message.isOutgoing ? 'ml-8' : 'mr-8'}>
-                      <div className={`rounded-lg border px-3.5 py-2.5 ${message.isOutgoing ? 'border-[#4f9ce8]/25 bg-[#234b73]' : 'border-[#314154] bg-[#17212f]'}`}>
-                        <div className="mb-2 flex items-center gap-3 text-[10px] text-[#aab3bd]">
-                          <span>{message.isOutgoing ? 'You' : 'Telegram'}</span>
-                          {message.isOutgoing && message.reactionCount > 0 && <span className="text-[#c6d0dc]">✓ acknowledged</span>}
-                          <span className="flex-1" />
-                          <button onClick={() => setReplyingTo(message)} className="mr-1.5 hover:text-mc-accent">Reply</button>
-                          <span className="text-[#91a0af]">{formatTime(message.sentAt)}</span>
-                        </div>
-                        <LinkifiedText className="whitespace-pre-wrap text-sm leading-relaxed text-[#fbfdff]">{message.text}</LinkifiedText>
-                        {!message.isOutgoing && selectedChatId && (
-                          <div className="mt-2 flex justify-end">
-                            <button
-                              type="button"
-                              onClick={() => toggleReadMarker(selectedChatId, message.id)}
-                              aria-label={isMarkedRead(selectedChatId, message.id) ? 'Marked read locally' : 'Mark this message read locally'}
-                              aria-pressed={isMarkedRead(selectedChatId, message.id)}
-                              className={`flex h-6 w-6 items-center justify-center rounded-full border text-sm leading-none transition-colors ${isMarkedRead(selectedChatId, message.id) ? 'border-mc-accent bg-mc-accent text-mc-bg shadow-[0_0_8px_rgba(88,166,255,0.35)]' : 'border-mc-border text-transparent hover:border-mc-accent hover:text-mc-accent'}`}
-                              title={isMarkedRead(selectedChatId, message.id) ? 'Marked read locally' : 'Mark this message read locally'}
-                            >
-                              {isMarkedRead(selectedChatId, message.id) ? '✓' : ''}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <TelegramMessageBubble
+                      key={message.id}
+                      message={message}
+                      preview={replyContext.inlinePreviewByMessageId[message.id]}
+                      canOpenThread={replyContext.canOpenThread(message)}
+                      onOpenThread={(threadMessage) => void replyContext.openThread(threadMessage)}
+                      onReply={setReplyingTo}
+                      showReadMarker={!message.isOutgoing && Boolean(selectedChatId)}
+                      readMarked={selectedChatId ? isMarkedRead(selectedChatId, message.id) : false}
+                      onToggleRead={selectedChatId ? () => toggleReadMarker(selectedChatId, message.id) : undefined}
+                    />
                   ))}
                 </div>
                 <div className="border-t border-mc-border p-3">
@@ -265,6 +253,18 @@ export function TelegramChatInboxPage() {
             )}
           </section>
         </div>
+        <TelegramReplyContextModal
+          open={Boolean(replyContext.threadAnchor)}
+          title="Telegram reply chain"
+          messages={replyContext.threadMessages}
+          loading={replyContext.threadLoading}
+          loadingEarlier={replyContext.threadLoadingEarlier}
+          hasEarlier={replyContext.threadHasEarlier}
+          error={replyContext.threadError}
+          onClose={replyContext.closeThread}
+          onLoadEarlier={() => void replyContext.loadEarlierInThread()}
+          onReply={handleReplyFromThread}
+        />
       </div>
     </main>
   );
