@@ -7,6 +7,8 @@ import { TELEGRAM_TEXT_MESSAGE_LIMIT, splitTelegramMessageText } from '@/lib/tel
 import { useTelegramChatInbox, type TelegramMessage } from './useTelegramChatInbox';
 import { getTelegramChatEmoji } from './telegramChatDisplay';
 import { useTelegramAgentReadMarkers } from './useTelegramAgentReadMarkers';
+import { playTelegramSentSound, primeTelegramSentSound } from '@/lib/audio/telegramSentSound';
+import { canStartTelegramSend, recoverFailedTelegramDraft, shouldSendTelegramComposerFromKeyDown, telegramSendButtonClassName } from './telegramComposerSendState';
 
 interface TelegramChatWidgetContentProps {
   isExpanded: boolean;
@@ -38,7 +40,7 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
   } = useTelegramChatInbox();
   const [composerText, setComposerText] = useState('');
   const [replyingTo, setReplyingTo] = useState<TelegramMessage | null>(null);
-  const { isMarkedRead, toggleReadMarker } = useTelegramAgentReadMarkers();
+  const { isMarkedRead, markReadMarker, markReplyParentsRead, toggleReadMarker } = useTelegramAgentReadMarkers();
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(true);
   const isNearBottomRef = useRef(true);
@@ -70,6 +72,11 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
     shouldScrollToBottomRef.current = false;
   }, [messages, selectedCacheEntry?.scrollTop, selectedChat]);
 
+  useEffect(() => {
+    if (!selectedChat) return;
+    markReplyParentsRead(selectedChat.id, messages);
+  }, [markReplyParentsRead, messages, selectedChat]);
+
   const handleThreadScroll = () => {
     const el = scrollRef.current;
     if (!el || !selectedChat) return;
@@ -84,15 +91,24 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
   };
 
   const handleSendMessage = async () => {
+    if (!canStartTelegramSend(composerText, sending)) return;
+
+    primeTelegramSentSound();
+    const attemptedText = composerText;
     const followSentMessagesToBottom = isNearBottomRef.current;
-    const result = await sendMessage(composerText, replyingTo);
+    const replyParent = replyingTo;
+    setComposerText('');
+    const result = await sendMessage(attemptedText, replyParent);
     shouldScrollToBottomRef.current = followSentMessagesToBottom;
     if (followSentMessagesToBottom) isNearBottomRef.current = true;
     if (result.ok) {
-      setComposerText('');
+      playTelegramSentSound();
+      if (selectedChat && replyParent && !replyParent.isOutgoing) {
+        markReadMarker(selectedChat.id, replyParent.id);
+      }
       setReplyingTo(null);
     } else {
-      setComposerText(result.unsentText);
+      setComposerText((current) => recoverFailedTelegramDraft(current, result.unsentText));
     }
   };
 
@@ -194,7 +210,7 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
             value={composerText}
             onChange={(event) => setComposerText(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
+              if (shouldSendTelegramComposerFromKeyDown(event.key, event.shiftKey)) {
                 event.preventDefault();
                 void handleSendMessage();
               }
@@ -203,7 +219,7 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
             className="min-h-[34px] flex-1 resize-none rounded border border-mc-border bg-[#111923] px-2 py-1.5 text-sm text-[#fbfdff] outline-none placeholder:text-[#7b8794] focus:border-mc-accent"
             placeholder="Message…"
           />
-          <button onClick={() => void handleSendMessage()} disabled={sending || !composerText.trim()} className="rounded bg-mc-accent px-3 text-xs font-medium text-mc-bg disabled:opacity-50">
+          <button onClick={() => void handleSendMessage()} disabled={!canStartTelegramSend(composerText, sending)} className={telegramSendButtonClassName(sending, true)}>
             {sending ? '…' : 'Send'}
           </button>
         </div>
