@@ -77,41 +77,28 @@ test('visibleTelegramMessages hides matching statuses older than the newest wind
     message(3, 'Another normal message'),
     message(4, 'Newest normal one'),
     message(5, 'Newest normal two'),
+    message(6, 'Newest normal three'),
   ];
 
   assert.deepEqual(
     visibleTelegramMessages(messages).map((item) => item.id),
-    [2, 3, 4, 5],
+    [2, 3, 4, 5, 6],
   );
 });
 
 test('visibleTelegramMessages keeps matching statuses inside the newest window', () => {
   const messages = [
     message(1, 'Normal older context'),
-    message(2, 'Normal older context 2'),
+    message(2, 'Tidepooling...'),
     message(3, 'Newest normal one'),
-    message(4, 'Tidepooling...'),
-    message(5, 'Newest normal two'),
+    message(4, 'Newest normal two'),
+    message(5, 'Newest normal three'),
+    message(6, 'Newest normal four'),
   ];
 
   assert.deepEqual(
     visibleTelegramMessages(messages).map((item) => item.id),
-    [1, 2, 3, 4, 5],
-  );
-});
-
-test('visibleTelegramMessages keeps a matching status in the second-newest raw position regardless of input order', () => {
-  const messages = [
-    message(5, 'Newest normal two'),
-    message(4, 'Brining...'),
-    message(3, 'Newest normal one'),
-    message(2, 'Normal older context 2'),
-    message(1, '🔧 Tool: read'),
-  ];
-
-  assert.deepEqual(
-    visibleTelegramMessages(messages).map((item) => item.id),
-    [5, 4, 3, 2],
+    [1, 2, 3, 4, 5, 6],
   );
 });
 
@@ -122,11 +109,13 @@ test('visibleTelegramMessages keeps normal messages regardless of age', () => {
     message(3, 'Recent normal one'),
     message(4, 'Recent normal two'),
     message(5, 'Recent normal three'),
+    message(6, 'Recent normal four'),
+    message(7, 'Recent normal five'),
   ];
 
   assert.deepEqual(
     visibleTelegramMessages(messages).map((item) => item.id),
-    [1, 3, 4, 5],
+    [1, 3, 4, 5, 6, 7],
   );
 });
 
@@ -135,12 +124,14 @@ test('visibleTelegramMessages protects all messages when the list fits in the re
     message(1, 'Brining...'),
     message(2, 'Tidepooling...'),
     message(3, '📖 Read: source'),
+    message(4, '🔧 Tool: read'),
+    message(5, '🗺️ Update Plan'),
   ];
 
-  assert.equal(RECENT_STATUS_MESSAGE_WINDOW, 3);
+  assert.equal(RECENT_STATUS_MESSAGE_WINDOW, 5);
   assert.deepEqual(
     visibleTelegramMessages(messages).map((item) => item.id),
-    [1, 2, 3],
+    [1, 2, 3, 4, 5],
   );
 });
 
@@ -151,6 +142,7 @@ test('visibleTelegramMessages returns a derived list without mutating raw input'
     message(3, 'Recent normal one'),
     message(4, 'Recent normal two'),
     message(5, 'Recent normal three'),
+    message(6, 'Recent normal four'),
   ];
   const originalIds = messages.map((item) => item.id);
   const originalObjects = [...messages];
@@ -160,6 +152,6 @@ test('visibleTelegramMessages returns a derived list without mutating raw input'
   assert.notEqual(visible, messages);
   assert.deepEqual(messages.map((item) => item.id), originalIds);
   assert.deepEqual(messages, originalObjects);
-  assert.equal(messages.length, 5);
-  assert.deepEqual(visible.map((item) => item.id), [2, 3, 4, 5]);
+  assert.equal(messages.length, 6);
+  assert.deepEqual(visible.map((item) => item.id), [2, 3, 4, 5, 6]);
 });

@@ -13,7 +13,7 @@ const CHAT_EMOJI_BY_TITLE: Record<string, string> = {
   'Leo Fitness': '🦁',
 };
 
-export const RECENT_STATUS_MESSAGE_WINDOW = 3;
+export const RECENT_STATUS_MESSAGE_WINDOW = 5;
 
 export function getTelegramChatEmoji(chat: Pick<TelegramChat, 'id' | 'title'>): string {
   return CHAT_EMOJI_BY_ID[chat.id] || CHAT_EMOJI_BY_TITLE[chat.title] || '💬';
@@ -21,26 +21,12 @@ export function getTelegramChatEmoji(chat: Pick<TelegramChat, 'id' | 'title'>): 
 
 export const isTelegramBridgeStatusText = isTelegramBridgeStatusMessage;
 
-function messageNewestSortValue(message: TelegramMessage): number {
-  const sentAt = Date.parse(message.sentAt);
-  return Number.isFinite(sentAt) ? sentAt : message.id;
-}
-
 export function visibleTelegramMessages(
   messages: TelegramMessage[],
   recentWindow = RECENT_STATUS_MESSAGE_WINDOW,
 ): TelegramMessage[] {
-  const protectedMessageIds = new Set(
-    [...messages]
-      .sort((a, b) => {
-        const bySentAt = messageNewestSortValue(b) - messageNewestSortValue(a);
-        return bySentAt || b.id - a.id;
-      })
-      .slice(0, Math.max(recentWindow, 0))
-      .map((message) => message.id),
-  );
-
-  return messages.filter((message) => (
-    protectedMessageIds.has(message.id) || !isTelegramBridgeStatusText(message.text)
+  const protectedStartIndex = Math.max(messages.length - Math.max(recentWindow, 0), 0);
+  return messages.filter((message, index) => (
+    index >= protectedStartIndex || !isTelegramBridgeStatusText(message.text)
   ));
 }
