@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { latestAcknowledgedOutgoingMessageId, mergeTelegramMessages, type TelegramMessage } from './useTelegramChatInbox';
+import { latestAcknowledgedOutgoingMessageId, mergeTelegramMessages, shouldRefreshSelectedMessages, type TelegramMessage } from './useTelegramChatInbox';
 
 function message(id: number, overrides: Partial<TelegramMessage> = {}): TelegramMessage {
   return {
@@ -39,4 +39,17 @@ test('mergeTelegramMessages deduplicates by id and returns chronological order',
 
   assert.deepEqual(merged.map((item) => item.id), [3, 4, 5]);
   assert.equal(merged[0].text, 'updated 3');
+});
+
+test('shouldRefreshSelectedMessages refreshes empty, never-fetched, or stale cache entries', () => {
+  const now = 10_000;
+  assert.equal(shouldRefreshSelectedMessages(null, now, 5_000), true);
+  assert.equal(shouldRefreshSelectedMessages({ messages: [], lastFetchedAt: now }, now, 5_000), true);
+  assert.equal(shouldRefreshSelectedMessages({ messages: [message(1)], lastFetchedAt: null }, now, 5_000), true);
+  assert.equal(shouldRefreshSelectedMessages({ messages: [message(1)], lastFetchedAt: 4_999 }, now, 5_000), true);
+});
+
+test('shouldRefreshSelectedMessages keeps fresh cached selected messages on screen without immediate fetch', () => {
+  const now = 10_000;
+  assert.equal(shouldRefreshSelectedMessages({ messages: [message(1)], lastFetchedAt: 5_001 }, now, 5_000), false);
 });

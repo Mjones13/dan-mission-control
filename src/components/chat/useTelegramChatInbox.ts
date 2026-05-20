@@ -68,16 +68,27 @@ const REQUEST_TIMEOUT_MS = 12000;
 const MARK_READ_TIMEOUT_MS = 30000;
 const MAX_CACHED_CHATS = 20;
 const MAX_MESSAGES_PER_CHAT = 150;
+const SELECTED_MESSAGE_REFRESH_STALE_MS = 5000;
 
+// Wrap every chat fetch with a timeout while still honoring caller-owned aborts,
+// so selected-chat switches can cancel obsolete work without losing timeout safety.
 async function fetchJson(url: string, options?: RequestInit) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const externalSignal = options?.signal;
+  const abortFromExternalSignal = () => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort();
+    else externalSignal.addEventListener('abort', abortFromExternalSignal, { once: true });
+  }
+
   try {
     const res = await fetch(url, { ...options, signal: controller.signal });
     const data = await res.json();
     return { res, data };
   } finally {
     window.clearTimeout(timeout);
+    externalSignal?.removeEventListener('abort', abortFromExternalSignal);
   }
 }
 
@@ -109,6 +120,17 @@ export function mergeTelegramMessages(current: TelegramMessage[], incoming: Tele
   const byId = new Map<number, TelegramMessage>();
   for (const message of source) byId.set(message.id, message);
   return Array.from(byId.values()).sort((a, b) => a.id - b.id);
+}
+
+// Selection changes should show fresh cached messages immediately instead of
+// refetching on every A/B click; stale or empty caches still refresh right away.
+export function shouldRefreshSelectedMessages(
+  entry: Pick<ChatMessageCacheEntry, 'messages' | 'lastFetchedAt'> | null | undefined,
+  now: number,
+  staleMs = SELECTED_MESSAGE_REFRESH_STALE_MS,
+): boolean {
+  if (!entry?.messages.length || entry.lastFetchedAt === null) return true;
+  return now - entry.lastFetchedAt >= staleMs;
 }
 
 function trimMessages(messages: TelegramMessage[]): TelegramMessage[] {
@@ -150,6 +172,12 @@ export function useTelegramChatInbox(): UseTelegramChatInboxResult {
   const messageCacheRef = useRef<Record<string, ChatMessageCacheEntry>>({});
   const loadingChatsRef = useRef(false);
   const messageInFlightRef = useRef<Record<string, boolean>>({});
+  // Each message request gets a per-chat generation so late responses from
+  // superseded requests cannot overwrite newer cache state.
+  const messageRequestGenerationRef = useRef<Record<string, number>>({});
+  // Only one selected-thread request should be active globally; switching chats
+  // aborts the previous selected fetch instead of letting requests pile up.
+  const selectedMessageRequestRef = useRef<{ chatId: string; generation: number; controller: AbortController } | null>(null);
   const olderInFlightRef = useRef<Record<string, boolean>>({});
   const chatListPollRef = useRef<NodeJS.Timeout | null>(null);
   const messagePollRef = useRef<NodeJS.Timeout | null>(null);
@@ -207,9 +235,28 @@ export function useTelegramChatInbox(): UseTelegramChatInboxResult {
     }
   }, []);
 
-  const loadMessagesForChat = useCallback(async (chatId: string, background = false) => {
+  // Load the latest window for a chat. When called for the selected thread, this
+  // also enforces abort/stale-response guards for rapid chat switching.
+  const loadMessagesForChat = useCallback(async (chatId: string, background = false, options?: { selected?: boolean }) => {
+    const selectedRequest = options?.selected ?? false;
     if (messageInFlightRef.current[chatId]) return;
+
+    if (selectedRequest) {
+      const activeSelectedRequest = selectedMessageRequestRef.current;
+      if (activeSelectedRequest) {
+        // A new selected-chat request makes the prior selected fetch obsolete;
+        // abort it and release its in-flight flag so the new chat can proceed.
+        activeSelectedRequest.controller.abort();
+        messageInFlightRef.current[activeSelectedRequest.chatId] = false;
+      }
+    }
+
     messageInFlightRef.current[chatId] = true;
+    const controller = new AbortController();
+    const generation = (messageRequestGenerationRef.current[chatId] ?? 0) + 1;
+    messageRequestGenerationRef.current[chatId] = generation;
+    if (selectedRequest) selectedMessageRequestRef.current = { chatId, generation, controller };
+    const isLatestRequest = () => messageRequestGenerationRef.current[chatId] === generation;
 
     const existing = messageCacheRef.current[chatId];
     const hasCachedMessages = Boolean(existing?.messages.length);
@@ -229,9 +276,10 @@ export function useTelegramChatInbox(): UseTelegramChatInboxResult {
     setError(null);
 
     try {
-      const { res, data } = await fetchJson(`/api/telegram/chats/${encodeURIComponent(chatId)}/messages?${query.toString()}`);
+      const { res, data } = await fetchJson(`/api/telegram/chats/${encodeURIComponent(chatId)}/messages?${query.toString()}`, { signal: controller.signal });
       if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to load Telegram messages');
       const fetchedMessages: TelegramMessage[] = data.messages || [];
+      if (!isLatestRequest()) return;
       setMessageCache((cache) => updateEntry(cache, chatId, (entry) => {
         const merged = trimMessages(mergeTelegramMessages(entry.messages, fetchedMessages, shouldAppend ? 'append' : 'replace'));
         return {
@@ -251,6 +299,18 @@ export function useTelegramChatInbox(): UseTelegramChatInboxResult {
         markChatRead(chatId, latestLoadedMessageId);
       }
     } catch (err) {
+      if (!isLatestRequest()) return;
+      if (controller.signal.aborted) {
+        // Aborted selected fetches are expected during fast chat switching; clear
+        // loading state quietly instead of showing a timeout/error to the user.
+        setMessageCache((cache) => updateEntry(cache, chatId, (entry) => ({
+          ...entry,
+          isInitialLoading: false,
+          isRefreshing: false,
+          lastAccessedAt: Date.now(),
+        })));
+        return;
+      }
       const message = requestErrorMessage(err, 'Telegram message request');
       setError(message);
       setMessageCache((cache) => updateEntry(cache, chatId, (entry) => ({
@@ -262,14 +322,18 @@ export function useTelegramChatInbox(): UseTelegramChatInboxResult {
         lastAccessedAt: Date.now(),
       })));
     } finally {
-      messageInFlightRef.current[chatId] = false;
+      if (isLatestRequest()) messageInFlightRef.current[chatId] = false;
+      const activeSelectedRequest = selectedMessageRequestRef.current;
+      if (activeSelectedRequest?.chatId === chatId && activeSelectedRequest.generation === generation) {
+        selectedMessageRequestRef.current = null;
+      }
     }
   }, [markChatRead]);
 
   const refreshSelectedMessages = useCallback(async (options?: { background?: boolean }) => {
     const chatId = selectedChatIdRef.current;
     if (!chatId) return;
-    await loadMessagesForChat(chatId, options?.background ?? false);
+    await loadMessagesForChat(chatId, options?.background ?? false, { selected: true });
   }, [loadMessagesForChat]);
 
   useEffect(() => {
@@ -290,10 +354,13 @@ export function useTelegramChatInbox(): UseTelegramChatInboxResult {
     }
     if (!selectedChatId) return;
 
-    const hasCachedMessages = Boolean(messageCacheRef.current[selectedChatId]?.messages.length);
-    void loadMessagesForChat(selectedChatId, hasCachedMessages);
+    const selectedEntry = messageCacheRef.current[selectedChatId];
+    const hasCachedMessages = Boolean(selectedEntry?.messages.length);
+    if (shouldRefreshSelectedMessages(selectedEntry, Date.now())) {
+      void loadMessagesForChat(selectedChatId, hasCachedMessages, { selected: true });
+    }
     messagePollRef.current = setInterval(() => {
-      if (!document.hidden) void loadMessagesForChat(selectedChatId, true);
+      if (!document.hidden) void loadMessagesForChat(selectedChatId, true, { selected: true });
     }, 10000);
 
     return () => {
