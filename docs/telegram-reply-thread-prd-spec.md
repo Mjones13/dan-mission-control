@@ -520,15 +520,15 @@ OpenClaw Telegram supports:
 ### Recommended policy
 
 1. **Do not make Mission Control rewrite or resend agent responses.** Mission Control's Telegram user-client sends as M Jones; agent/bot responses are handled by OpenClaw Telegram delivery.
-2. **Configure Finn/OpenClaw reply threading for this Telegram group if M Jones approves.** Prefer `replyToMode: first` for agent responses in group chats where reply-chain continuity matters. `all` may be noisy for multi-message/chunked outputs.
-3. **Use explicit `[[reply_to_current]]` only where the runtime/system prompt requires it or where `replyToMode` is off.** Avoid exposing tags in visible output; OpenClaw already strips control tags in delivery/display paths per changelog/docs.
-4. **When Finn is responding to a Telegram inbound message, prefer replying to the triggering message, not the earlier message that M Jones replied to.** This keeps the immediate conversational chain intact.
+2. **Configure Finn/OpenClaw reply threading for this Telegram group if M Jones approves.** Prefer native Telegram `replyTo` behavior by default when Finn/agents visibly respond to a specific user message in this group/chat. Broad status/broadcast messages can remain plain messages.
+3. **Prefer OpenClaw's built-in reply controls rather than quote-text-only conventions.** Use `replyToMode: first` where appropriate for group replies, or explicit `[[reply_to_current]]` when runtime/system instructions need to force a reply and `replyToMode` is off. Avoid exposing tags in visible output; OpenClaw already strips control tags in delivery/display paths per changelog/docs. `all` may be noisy for multi-message/chunked outputs.
+4. **When Finn is responding to a Telegram inbound message, prefer replying to the triggering message, not the earlier message that M Jones replied to.** This keeps the immediate conversational chain intact and makes Mission Control's reply previews/thread modal reliable.
 5. **Manual override:** If M Jones asks Finn to reply under a specific earlier message id, Finn can use `[[reply_to:<id>]]` where the id is known/provided.
 6. **No automatic sends from Mission Control UI.** Browsing/reply previews/thread context modal should not dispatch agent work.
 
 ### Feasibility and caveats
 
-Feasible if OpenClaw has current inbound Telegram message id metadata available in the agent runtime. OpenClaw docs and changelog indicate inbound metadata includes message ids and reply ids for prompt/tool targeting. If an empirical check is needed later, use logs/config inspection or a controlled read-only review of Telegram channel runtime metadata; do not send test messages without M Jones approval.
+Feasible if OpenClaw has current inbound Telegram message id metadata available in the agent runtime. OpenClaw docs and changelog indicate inbound metadata includes message ids and reply ids for prompt/tool targeting. This is an operational/config follow-up outside PR #9's Mission Control app-code scope unless this repository later owns that behavior. If an empirical check is needed later, use logs/config inspection or a controlled read-only review of Telegram channel runtime metadata; do not send test messages without M Jones approval.
 
 ## 11. API/cache/data model changes
 
@@ -758,7 +758,7 @@ Definition of done:
 ### Phase 5 — Agent reply behavior follow-up
 
 - Inspect current Finn/OpenClaw Telegram group config for `channels.telegram.replyToMode` only with M Jones approval if config changes may be needed.
-- If approved, set reply threading policy for Finn group (`first` recommended) or add system-prompt instruction to prefer `[[reply_to_current]]` where appropriate.
+- If approved, make native Telegram reply-to behavior the default when Finn/agents visibly respond to a specific user message in this group/chat (`replyToMode: first` recommended, or a system-prompt instruction to prefer `[[reply_to_current]]` where appropriate). Broad status/broadcast messages can remain plain messages.
 - Verify with a controlled manual message only if M Jones approves external Telegram test sends.
 
 Definition of done:
@@ -783,7 +783,7 @@ Definition of done:
 
 ### Remaining follow-ups
 
-1. **Agent threading config:** Should Finn always reply to the triggering Telegram message in this group (`replyToMode: first`), or only when explicitly instructed? Recommendation: handle separately; do not block Mission Control UI V1.
+1. **Agent threading config:** Finn/agents should default to native Telegram replies (`replyTo`) when visibly responding to a specific user message in this group/chat, because Mission Control reply previews/thread modal depend on native reply-chain metadata. Broad status/broadcast messages can remain plain. Recommendation: handle separately as OpenClaw/Finn operational config/prompt work; do not block Mission Control UI V1.
 2. **Fallback wording polish:** Default to specific fallback states (`deleted`, `non_text`, `inaccessible`, `error`) in code where known, with “Original message unavailable” as the generic UI fallback.
 3. **Implementation sequencing:** Avoid collisions with active PR #5 and the sent-message swoosh branch; stack reply/thread work after the branch that owns the latest chat hook/widget changes.
 
