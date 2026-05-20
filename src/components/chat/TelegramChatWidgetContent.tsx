@@ -6,6 +6,7 @@ import { LinkifiedText } from './LinkifiedText';
 import { TELEGRAM_TEXT_MESSAGE_LIMIT, splitTelegramMessageText } from '@/lib/telegram/message-chunks';
 import { useTelegramChatInbox, type TelegramMessage } from './useTelegramChatInbox';
 import { getTelegramChatEmoji } from './telegramChatDisplay';
+import { useTelegramAgentReadMarkers } from './useTelegramAgentReadMarkers';
 
 interface TelegramChatWidgetContentProps {
   isExpanded: boolean;
@@ -37,6 +38,7 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
   } = useTelegramChatInbox();
   const [composerText, setComposerText] = useState('');
   const [replyingTo, setReplyingTo] = useState<TelegramMessage | null>(null);
+  const { isMarkedRead, toggleReadMarker } = useTelegramAgentReadMarkers();
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(true);
   const isNearBottomRef = useRef(true);
@@ -156,10 +158,25 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
                 <div className="mb-2 flex items-center gap-3 text-[10px] text-[#aab3bd]">
                   <span>{message.isOutgoing ? 'You' : 'Telegram'}</span>
                   {message.isOutgoing && message.reactionCount > 0 && <span className="text-[#c6d0dc]">✓ acknowledged</span>}
-                  <button onClick={() => setReplyingTo(message)} className="ml-auto mr-1 hover:text-mc-accent">Reply</button>
+                  <span className="flex-1" />
+                  <button onClick={() => setReplyingTo(message)} className="mr-1 hover:text-mc-accent">Reply</button>
                   <span className="text-[#91a0af]">{formatTime(message.sentAt)}</span>
                 </div>
                 <LinkifiedText className="whitespace-pre-wrap text-sm leading-relaxed text-[#fbfdff]">{message.text}</LinkifiedText>
+                {!message.isOutgoing && selectedChat && (
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => toggleReadMarker(selectedChat.id, message.id)}
+                      aria-label={isMarkedRead(selectedChat.id, message.id) ? 'Marked read locally' : 'Mark this message read locally'}
+                      aria-pressed={isMarkedRead(selectedChat.id, message.id)}
+                      className={`flex h-5 w-5 items-center justify-center rounded-full border text-xs leading-none transition-colors ${isMarkedRead(selectedChat.id, message.id) ? 'border-mc-accent bg-mc-accent text-mc-bg shadow-[0_0_8px_rgba(88,166,255,0.35)]' : 'border-mc-border text-transparent hover:border-mc-accent hover:text-mc-accent'}`}
+                      title={isMarkedRead(selectedChat.id, message.id) ? 'Marked read locally' : 'Mark this message read locally'}
+                    >
+                      {isMarkedRead(selectedChat.id, message.id) ? '✓' : ''}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
