@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import type { TelegramMessage } from './useTelegramChatInbox';
 
 export const TELEGRAM_AGENT_READ_MARKERS_STORAGE_KEY = 'mission-control.telegram.agentReadMarkers.v1';
 export const MAX_TELEGRAM_AGENT_READ_MARKERS_PER_CHAT = 100;
@@ -32,6 +33,26 @@ export function parseTelegramAgentReadMarkers(raw: string | null): TelegramAgent
   } catch {
     return {};
   }
+}
+
+export function markTelegramAgentMessagesRead(
+  markers: TelegramAgentReadMarkers,
+  chatId: string,
+  messageIds: number[],
+): TelegramAgentReadMarkers {
+  if (messageIds.length === 0) return markers;
+
+  const current = markers[chatId] || [];
+  const uniqueMessageIds = Array.from(new Set(messageIds));
+  const hasNewMarker = uniqueMessageIds.some((messageId) => !current.includes(messageId));
+  if (!hasNewMarker) return markers;
+
+  const nextChatMarkers = current
+    .filter((id) => !uniqueMessageIds.includes(id))
+    .concat(uniqueMessageIds)
+    .slice(-MAX_TELEGRAM_AGENT_READ_MARKERS_PER_CHAT);
+
+  return { ...markers, [chatId]: nextChatMarkers };
 }
 
 export function markTelegramAgentMessageRead(
@@ -75,6 +96,15 @@ export function toggleTelegramAgentMessageRead(
     : markTelegramAgentMessageRead(markers, chatId, messageId);
 }
 
+export function replyParentReadMarkerIds(messages: TelegramMessage[]): number[] {
+  const incomingMessageIds = new Set(messages.filter((message) => !message.isOutgoing).map((message) => message.id));
+  const parentIds = messages
+    .filter((message) => message.isOutgoing && message.replyToMessageId !== null && incomingMessageIds.has(message.replyToMessageId))
+    .map((message) => message.replyToMessageId as number);
+
+  return Array.from(new Set(parentIds));
+}
+
 export function useTelegramAgentReadMarkers() {
   const [markers, setMarkers] = useState<TelegramAgentReadMarkers>({});
 
@@ -96,9 +126,18 @@ export function useTelegramAgentReadMarkers() {
     isTelegramAgentMessageMarkedRead(markers, chatId, messageId)
   ), [markers]);
 
+  const markReadMarker = useCallback((chatId: string, messageId: number) => {
+    updateMarkers((current) => markTelegramAgentMessageRead(current, chatId, messageId));
+  }, [updateMarkers]);
+
+  const markReplyParentsRead = useCallback((chatId: string, messages: TelegramMessage[]) => {
+    const parentIds = replyParentReadMarkerIds(messages);
+    updateMarkers((current) => markTelegramAgentMessagesRead(current, chatId, parentIds));
+  }, [updateMarkers]);
+
   const toggleReadMarker = useCallback((chatId: string, messageId: number) => {
     updateMarkers((current) => toggleTelegramAgentMessageRead(current, chatId, messageId));
   }, [updateMarkers]);
 
-  return { isMarkedRead, toggleReadMarker };
+  return { isMarkedRead, markReadMarker, markReplyParentsRead, toggleReadMarker };
 }

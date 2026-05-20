@@ -7,6 +7,7 @@ import { TELEGRAM_TEXT_MESSAGE_LIMIT, splitTelegramMessageText } from '@/lib/tel
 import { useTelegramChatInbox, type TelegramMessage } from './useTelegramChatInbox';
 import { getTelegramChatEmoji } from './telegramChatDisplay';
 import { useTelegramAgentReadMarkers } from './useTelegramAgentReadMarkers';
+import { playTelegramSentSound, primeTelegramSentSound } from '@/lib/audio/telegramSentSound';
 
 const CHAT_FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif';
 
@@ -34,7 +35,7 @@ export function TelegramChatInboxPage() {
   } = useTelegramChatInbox();
   const [composerText, setComposerText] = useState('');
   const [replyingTo, setReplyingTo] = useState<TelegramMessage | null>(null);
-  const { isMarkedRead, toggleReadMarker } = useTelegramAgentReadMarkers();
+  const { isMarkedRead, markReadMarker, markReplyParentsRead, toggleReadMarker } = useTelegramAgentReadMarkers();
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(true);
   const isNearBottomRef = useRef(true);
@@ -65,6 +66,11 @@ export function TelegramChatInboxPage() {
     shouldScrollToBottomRef.current = false;
   }, [messages, selectedCacheEntry?.scrollTop, selectedChatId]);
 
+  useEffect(() => {
+    if (!selectedChatId) return;
+    markReplyParentsRead(selectedChatId, messages);
+  }, [markReplyParentsRead, messages, selectedChatId]);
+
   const backToList = () => {
     clearSelection();
     setComposerText('');
@@ -85,11 +91,17 @@ export function TelegramChatInboxPage() {
   };
 
   const handleSendMessage = async () => {
+    primeTelegramSentSound();
     const followSentMessagesToBottom = isNearBottomRef.current;
-    const result = await sendMessage(composerText, replyingTo);
+    const replyParent = replyingTo;
+    const result = await sendMessage(composerText, replyParent);
     shouldScrollToBottomRef.current = followSentMessagesToBottom;
     if (followSentMessagesToBottom) isNearBottomRef.current = true;
     if (result.ok) {
+      playTelegramSentSound();
+      if (selectedChatId && replyParent && !replyParent.isOutgoing) {
+        markReadMarker(selectedChatId, replyParent.id);
+      }
       setComposerText('');
       setReplyingTo(null);
     } else {
