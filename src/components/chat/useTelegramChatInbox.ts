@@ -43,7 +43,7 @@ export interface ChatMessageCacheEntry {
 }
 
 export type SendMessageResult =
-  | { ok: true }
+  | { ok: true; sentMessages: TelegramMessage[] }
   | { ok: false; unsentText: string; sentAnyChunks: boolean; error: string };
 
 export interface UseTelegramChatInboxResult {
@@ -455,6 +455,7 @@ export function useTelegramChatInbox(): UseTelegramChatInboxResult {
     setError(null);
     let failedChunkIndex: number | null = null;
     let sentAnyChunks = false;
+    const sentMessages: TelegramMessage[] = [];
     try {
       for (let index = 0; index < chunks.length; index += 1) {
         const chunk = chunks[index];
@@ -467,6 +468,7 @@ export function useTelegramChatInbox(): UseTelegramChatInboxResult {
         if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to send Telegram message');
         sentAnyChunks = true;
         const sentMessage: TelegramMessage = data.message;
+        sentMessages.push(sentMessage);
         setMessageCache((cache) => updateEntry(cache, chatId, (entry) => {
           const merged = trimMessages(mergeTelegramMessages(entry.messages, [sentMessage], 'append'));
           return {
@@ -480,7 +482,7 @@ export function useTelegramChatInbox(): UseTelegramChatInboxResult {
         }));
       }
       await refreshChats();
-      return { ok: true };
+      return { ok: true, sentMessages };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to send Telegram message';
       setError(message);

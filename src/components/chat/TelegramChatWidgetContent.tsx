@@ -2,23 +2,20 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, Loader } from 'lucide-react';
-import { LinkifiedText } from './LinkifiedText';
 import { TELEGRAM_TEXT_MESSAGE_LIMIT, splitTelegramMessageText } from '@/lib/telegram/message-chunks';
 import { useTelegramChatInbox, type TelegramMessage } from './useTelegramChatInbox';
 import { getTelegramChatEmoji, visibleTelegramMessages } from './telegramChatDisplay';
 import { useTelegramAgentReadMarkers } from './useTelegramAgentReadMarkers';
 import { playTelegramSentSound, primeTelegramSentSound } from '@/lib/audio/telegramSentSound';
 import { canStartTelegramSend, recoverFailedTelegramDraft, shouldSendTelegramComposerFromKeyDown, telegramSendButtonClassName } from './telegramComposerSendState';
+import { useTelegramReplyContext } from './useTelegramReplyContext';
+import { TelegramMessageBubble, TelegramReplyContextModal } from './TelegramReplyContextViews';
 
 interface TelegramChatWidgetContentProps {
   isExpanded: boolean;
 }
 
 const CHAT_FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif';
-
-function formatTime(value: string): string {
-  return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-}
 
 export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetContentProps) {
   const {
@@ -41,6 +38,7 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
   const [composerText, setComposerText] = useState('');
   const [replyingTo, setReplyingTo] = useState<TelegramMessage | null>(null);
   const { getMarkerState, markReadMarker, markReplyParentsRead, cycleMarker } = useTelegramAgentReadMarkers();
+  const replyContext = useTelegramReplyContext({ chatId: selectedChat?.id || null, messages });
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(true);
   const isNearBottomRef = useRef(true);
@@ -57,9 +55,10 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
       shouldScrollToBottomRef.current = !selectedCacheEntry?.messages.length;
       isNearBottomRef.current = true;
       setReplyingTo(null);
+      replyContext.closeThread();
     }
     previousChatIdRef.current = nextChatId;
-  }, [selectedCacheEntry?.messages.length, selectedChat?.id]);
+  }, [replyContext, selectedCacheEntry?.messages.length, selectedChat?.id]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -91,13 +90,20 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
     await loadOlderMessages();
   };
 
+  useEffect(() => {
+    if (!replyContext.threadAnchor || !replyContext.threadReplyTarget) return;
+    // While context is open, the shared composer should continue the visible
+    // chain by default instead of sending an unthreaded Telegram message.
+    setReplyingTo((current) => (current?.id === replyContext.threadReplyTarget?.id ? current : replyContext.threadReplyTarget));
+  }, [replyContext.threadAnchor, replyContext.threadReplyTarget]);
+
   const handleSendMessage = async () => {
     if (!canStartTelegramSend(composerText, sending)) return;
 
     primeTelegramSentSound();
     const attemptedText = composerText;
     const followSentMessagesToBottom = isNearBottomRef.current;
-    const replyParent = replyingTo;
+    const replyParent = replyingTo || replyContext.threadReplyTarget;
     setComposerText('');
     const result = await sendMessage(attemptedText, replyParent);
     shouldScrollToBottomRef.current = followSentMessagesToBottom;
@@ -107,10 +113,26 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
       if (selectedChat && replyParent && !replyParent.isOutgoing) {
         markReadMarker(selectedChat.id, replyParent.id);
       }
-      setReplyingTo(null);
+      if (replyContext.threadAnchor) {
+        replyContext.appendMessagesToThread(result.sentMessages);
+        setReplyingTo(result.sentMessages.at(-1) || replyContext.threadReplyTarget);
+      } else {
+        setReplyingTo(null);
+      }
     } else {
       setComposerText((current) => recoverFailedTelegramDraft(current, result.unsentText));
     }
+  };
+
+  const handleReplyFromThread = (message: TelegramMessage) => {
+    setReplyingTo(message);
+  };
+
+  const handleCloseThread = () => {
+    // Closing the modal exits its temporary reply mode; explicit non-modal
+    // replies still use the normal Reply button flow.
+    replyContext.closeThread();
+    setReplyingTo(null);
   };
 
   const renderMessageMarkerButton = (chatId: string, messageId: number) => {
@@ -196,23 +218,18 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
             </div>
           )}
           {renderedMessages.map((message) => (
-            <div key={message.id} className={message.isOutgoing ? 'ml-6' : 'mr-6'}>
-              <div className={`rounded-lg border px-3 py-2.5 ${message.isOutgoing ? 'border-[#4f9ce8]/25 bg-[#234b73]' : 'border-[#314154] bg-[#17212f]'}`}>
-                <div className="mb-2 flex items-center gap-3 text-[10px] text-[#aab3bd]">
-                  <span>{message.isOutgoing ? 'You' : 'Telegram'}</span>
-                  {message.isOutgoing && message.reactionCount > 0 && <span className="text-[#c6d0dc]">✓ acknowledged</span>}
-                  <span className="flex-1" />
-                  <button onClick={() => setReplyingTo(message)} className="mr-1 hover:text-mc-accent">Reply</button>
-                  <span className="text-[#91a0af]">{formatTime(message.sentAt)}</span>
-                </div>
-                <LinkifiedText className="whitespace-pre-wrap text-sm leading-relaxed text-[#fbfdff]">{message.text}</LinkifiedText>
-                {!message.isOutgoing && selectedChat && (
-                  <div className="mt-2 flex justify-end">
-                    {renderMessageMarkerButton(selectedChat.id, message.id)}
-                  </div>
-                )}
-              </div>
-            </div>
+            <TelegramMessageBubble
+              key={message.id}
+              message={message}
+              preview={replyContext.inlinePreviewByMessageId[message.id]}
+              compact
+              canOpenThread={replyContext.canOpenThread(message)}
+              onOpenThread={(threadMessage) => void replyContext.openThread(threadMessage)}
+              onReply={setReplyingTo}
+              showReadMarker={!message.isOutgoing && Boolean(selectedChat)}
+              readMarkerNode={selectedChat ? renderMessageMarkerButton(selectedChat.id, message.id) : undefined}
+              chatTitle={selectedChat?.title}
+            />
           ))}
         </div>
       )}
@@ -263,6 +280,19 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
       ) : (
         chatList
       )}
+      <TelegramReplyContextModal
+        open={Boolean(replyContext.threadAnchor)}
+        title="Thread"
+        messages={replyContext.threadMessages}
+        loading={replyContext.threadLoading}
+        loadingEarlier={replyContext.threadLoadingEarlier}
+        hasEarlier={replyContext.threadHasEarlier}
+        error={replyContext.threadError}
+        onClose={handleCloseThread}
+        onLoadEarlier={() => void replyContext.loadEarlierInThread()}
+        onReply={handleReplyFromThread}
+        chatTitle={selectedChat?.title}
+      />
     </div>
   );
 }
