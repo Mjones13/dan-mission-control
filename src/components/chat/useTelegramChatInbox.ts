@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { splitTelegramMessageText } from '@/lib/telegram/message-chunks';
+import {
+  DEFAULT_TELEGRAM_POLLING_POLICY,
+  isTelegramPollIntervalEnabled,
+  type TelegramPollingPolicy,
+} from '@/lib/telegram/policy';
 
 export interface TelegramChat {
   id: string;
@@ -159,6 +164,16 @@ function requestErrorMessage(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
 }
 
+function shouldPollWhileVisible(policy: TelegramPollingPolicy): boolean {
+  return policy.pollWhenHidden || !document.hidden;
+}
+
+async function fetchTelegramPollingPolicy(): Promise<TelegramPollingPolicy> {
+  const { res, data } = await fetchJson('/api/telegram/status');
+  if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to load Telegram status');
+  return data.telegramPolicy || DEFAULT_TELEGRAM_POLLING_POLICY;
+}
+
 export function useTelegramChatInbox(): UseTelegramChatInboxResult {
   const [chats, setChats] = useState<TelegramChat[]>([]);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
@@ -166,11 +181,13 @@ export function useTelegramChatInbox(): UseTelegramChatInboxResult {
   const [loadingChats, setLoadingChats] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [telegramPolicy, setTelegramPolicy] = useState<TelegramPollingPolicy>(DEFAULT_TELEGRAM_POLLING_POLICY);
 
   const chatsRef = useRef<TelegramChat[]>([]);
   const selectedChatIdRef = useRef<string | null>(null);
   const messageCacheRef = useRef<Record<string, ChatMessageCacheEntry>>({});
   const loadingChatsRef = useRef(false);
+  const telegramPolicyRef = useRef<TelegramPollingPolicy>(DEFAULT_TELEGRAM_POLLING_POLICY);
   const messageInFlightRef = useRef<Record<string, boolean>>({});
   // Each message request gets a per-chat generation so late responses from
   // superseded requests cannot overwrite newer cache state.
@@ -185,6 +202,7 @@ export function useTelegramChatInbox(): UseTelegramChatInboxResult {
   useEffect(() => { chatsRef.current = chats; }, [chats]);
   useEffect(() => { selectedChatIdRef.current = selectedChatId; }, [selectedChatId]);
   useEffect(() => { messageCacheRef.current = messageCache; }, [messageCache]);
+  useEffect(() => { telegramPolicyRef.current = telegramPolicy; }, [telegramPolicy]);
 
   const selectedChat = useMemo(
     () => chats.find((chat) => chat.id === selectedChatId) || null,
@@ -337,15 +355,23 @@ export function useTelegramChatInbox(): UseTelegramChatInboxResult {
   }, [loadMessagesForChat]);
 
   useEffect(() => {
+    void fetchTelegramPollingPolicy()
+      .then(setTelegramPolicy)
+      .catch(() => setTelegramPolicy(DEFAULT_TELEGRAM_POLLING_POLICY));
+  }, []);
+
+  useEffect(() => {
     void refreshChats();
-    chatListPollRef.current = setInterval(() => {
-      if (!document.hidden) void refreshChats({ background: true });
-    }, 15000);
+    if (isTelegramPollIntervalEnabled(telegramPolicy, telegramPolicy.chatListPollMs)) {
+      chatListPollRef.current = setInterval(() => {
+        if (shouldPollWhileVisible(telegramPolicyRef.current)) void refreshChats({ background: true });
+      }, telegramPolicy.chatListPollMs);
+    }
 
     return () => {
       if (chatListPollRef.current) clearInterval(chatListPollRef.current);
     };
-  }, [refreshChats]);
+  }, [refreshChats, telegramPolicy]);
 
   useEffect(() => {
     if (messagePollRef.current) {
@@ -359,14 +385,16 @@ export function useTelegramChatInbox(): UseTelegramChatInboxResult {
     if (shouldRefreshSelectedMessages(selectedEntry, Date.now())) {
       void loadMessagesForChat(selectedChatId, hasCachedMessages, { selected: true });
     }
-    messagePollRef.current = setInterval(() => {
-      if (!document.hidden) void loadMessagesForChat(selectedChatId, true, { selected: true });
-    }, 10000);
+    if (isTelegramPollIntervalEnabled(telegramPolicy, telegramPolicy.selectedChatPollMs)) {
+      messagePollRef.current = setInterval(() => {
+        if (shouldPollWhileVisible(telegramPolicyRef.current)) void loadMessagesForChat(selectedChatId, true, { selected: true });
+      }, telegramPolicy.selectedChatPollMs);
+    }
 
     return () => {
       if (messagePollRef.current) clearInterval(messagePollRef.current);
     };
-  }, [loadMessagesForChat, selectedChatId]);
+  }, [loadMessagesForChat, selectedChatId, telegramPolicy]);
 
   const selectChat = useCallback((chat: TelegramChat) => {
     setSelectedChatId(chat.id);

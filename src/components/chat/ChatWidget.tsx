@@ -3,6 +3,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { MessageSquare, X, Minimize2, Maximize2, Inbox } from 'lucide-react';
+import {
+  DEFAULT_TELEGRAM_POLLING_POLICY,
+  isTelegramPollIntervalEnabled,
+  type TelegramPollingPolicy,
+} from '@/lib/telegram/policy';
 import { TelegramChatWidgetContent } from './TelegramChatWidgetContent';
 
 export interface UnreadTask {
@@ -26,7 +31,24 @@ export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
   const [totalUnread, setTotalUnread] = useState(0);
+  const [telegramPolicy, setTelegramPolicy] = useState<TelegramPollingPolicy>(DEFAULT_TELEGRAM_POLLING_POLICY);
+  const telegramPolicyRef = useRef<TelegramPollingPolicy>(DEFAULT_TELEGRAM_POLLING_POLICY);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => { telegramPolicyRef.current = telegramPolicy; }, [telegramPolicy]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/telegram/status')
+      .then(async (res) => (res.ok ? res.json() : Promise.reject(new Error('Failed to load Telegram status'))))
+      .then((data: { telegramPolicy?: TelegramPollingPolicy }) => {
+        if (!cancelled) setTelegramPolicy(data.telegramPolicy || DEFAULT_TELEGRAM_POLLING_POLICY);
+      })
+      .catch(() => {
+        if (!cancelled) setTelegramPolicy(DEFAULT_TELEGRAM_POLLING_POLICY);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   const fetchUnread = useCallback(async () => {
     try {
@@ -49,11 +71,16 @@ export function ChatWidget() {
     if (isOpen) return;
 
     fetchUnread();
-    pollRef.current = setInterval(fetchUnread, 30000);
+    if (isTelegramPollIntervalEnabled(telegramPolicy, telegramPolicy.badgePollMs)) {
+      pollRef.current = setInterval(() => {
+        const currentPolicy = telegramPolicyRef.current;
+        if (currentPolicy.pollWhenHidden || !document.hidden) void fetchUnread();
+      }, telegramPolicy.badgePollMs);
+    }
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [fetchUnread, isOpen]);
+  }, [fetchUnread, isOpen, telegramPolicy]);
 
   // Keyboard shortcuts
   useEffect(() => {
