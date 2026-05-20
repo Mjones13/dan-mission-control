@@ -188,21 +188,24 @@ export function TelegramChatInboxPage() {
                           <span>{message.isOutgoing ? 'You' : 'Telegram'}</span>
                           {message.isOutgoing && message.reactionCount > 0 && <span className="text-[#c6d0dc]">✓ acknowledged</span>}
                           <span className="flex-1" />
-                          {!message.isOutgoing && selectedChatId && (
-                            <button
-                              type="button"
-                              onClick={() => toggleReadMarker(selectedChatId, message.id)}
-                              aria-pressed={isMarkedRead(selectedChatId, message.id)}
-                              className={`rounded-full px-2 py-0.5 transition-colors ${isMarkedRead(selectedChatId, message.id) ? 'bg-mc-accent text-mc-bg shadow-[0_0_8px_rgba(88,166,255,0.35)]' : 'border border-mc-border text-[#9aa6b2] hover:border-mc-accent hover:text-mc-accent'}`}
-                              title={isMarkedRead(selectedChatId, message.id) ? 'Marked read locally' : 'Mark this message read locally'}
-                            >
-                              {isMarkedRead(selectedChatId, message.id) ? '✓ read' : 'Mark read'}
-                            </button>
-                          )}
                           <button onClick={() => setReplyingTo(message)} className="mr-1.5 hover:text-mc-accent">Reply</button>
                           <span className="text-[#91a0af]">{formatTime(message.sentAt)}</span>
                         </div>
                         <LinkifiedText className="whitespace-pre-wrap text-sm leading-relaxed text-[#fbfdff]">{message.text}</LinkifiedText>
+                        {!message.isOutgoing && selectedChatId && (
+                          <div className="mt-2 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => toggleReadMarker(selectedChatId, message.id)}
+                              aria-label={isMarkedRead(selectedChatId, message.id) ? 'Marked read locally' : 'Mark this message read locally'}
+                              aria-pressed={isMarkedRead(selectedChatId, message.id)}
+                              className={`flex h-6 w-6 items-center justify-center rounded-full border text-sm leading-none transition-colors ${isMarkedRead(selectedChatId, message.id) ? 'border-mc-accent bg-mc-accent text-mc-bg shadow-[0_0_8px_rgba(88,166,255,0.35)]' : 'border-mc-border text-transparent hover:border-mc-accent hover:text-mc-accent'}`}
+                              title={isMarkedRead(selectedChatId, message.id) ? 'Marked read locally' : 'Mark this message read locally'}
+                            >
+                              {isMarkedRead(selectedChatId, message.id) ? '✓' : ''}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
