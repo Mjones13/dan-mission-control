@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, Loader } from 'lucide-react';
 import { LinkifiedText } from './LinkifiedText';
 import { TELEGRAM_TEXT_MESSAGE_LIMIT, splitTelegramMessageText } from '@/lib/telegram/message-chunks';
 import { useTelegramChatInbox, type TelegramMessage } from './useTelegramChatInbox';
-import { getTelegramChatEmoji } from './telegramChatDisplay';
+import { getTelegramChatEmoji, visibleTelegramMessages } from './telegramChatDisplay';
 import { useTelegramAgentReadMarkers } from './useTelegramAgentReadMarkers';
 import { playTelegramSentSound, primeTelegramSentSound } from '@/lib/audio/telegramSentSound';
 import { canStartTelegramSend, recoverFailedTelegramDraft, shouldSendTelegramComposerFromKeyDown, telegramSendButtonClassName } from './telegramComposerSendState';
@@ -48,6 +48,7 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
   const trimmedComposerText = composerText.trim();
   const composerChunks = splitTelegramMessageText(trimmedComposerText);
   const composerChunkCount = composerChunks.length;
+  const renderedMessages = useMemo(() => visibleTelegramMessages(messages), [messages]);
 
   useEffect(() => {
     const nextChatId = selectedChat?.id || null;
@@ -168,7 +169,7 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
               </button>
             </div>
           )}
-          {messages.map((message) => (
+          {renderedMessages.map((message) => (
             <div key={message.id} className={message.isOutgoing ? 'ml-6' : 'mr-6'}>
               <div className={`rounded-lg border px-3 py-2.5 ${message.isOutgoing ? 'border-[#4f9ce8]/25 bg-[#234b73]' : 'border-[#314154] bg-[#17212f]'}`}>
                 <div className="mb-2 flex items-center gap-3 text-[10px] text-[#aab3bd]">
