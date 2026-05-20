@@ -100,6 +100,21 @@ test('visibleTelegramMessages keeps matching statuses inside the newest window',
   );
 });
 
+test('visibleTelegramMessages keeps a matching status in the second-newest raw position regardless of input order', () => {
+  const messages = [
+    message(5, 'Newest normal two'),
+    message(4, 'Brining...'),
+    message(3, 'Newest normal one'),
+    message(2, 'Normal older context 2'),
+    message(1, '🔧 Tool: read'),
+  ];
+
+  assert.deepEqual(
+    visibleTelegramMessages(messages).map((item) => item.id),
+    [5, 4, 3, 2],
+  );
+});
+
 test('visibleTelegramMessages keeps normal messages regardless of age', () => {
   const messages = [
     message(1, 'A very old normal message'),

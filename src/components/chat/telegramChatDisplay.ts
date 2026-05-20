@@ -33,12 +33,26 @@ export function isTelegramBridgeStatusText(text: string | null | undefined): boo
   return BRIDGE_STATUS_PATTERNS.some((pattern) => pattern.test(text));
 }
 
+function messageNewestSortValue(message: TelegramMessage): number {
+  const sentAt = Date.parse(message.sentAt);
+  return Number.isFinite(sentAt) ? sentAt : message.id;
+}
+
 export function visibleTelegramMessages(
   messages: TelegramMessage[],
   recentWindow = RECENT_STATUS_MESSAGE_WINDOW,
 ): TelegramMessage[] {
-  const protectedStartIndex = Math.max(messages.length - Math.max(recentWindow, 0), 0);
-  return messages.filter((message, index) => (
-    index >= protectedStartIndex || !isTelegramBridgeStatusText(message.text)
+  const protectedMessageIds = new Set(
+    [...messages]
+      .sort((a, b) => {
+        const bySentAt = messageNewestSortValue(b) - messageNewestSortValue(a);
+        return bySentAt || b.id - a.id;
+      })
+      .slice(0, Math.max(recentWindow, 0))
+      .map((message) => message.id),
+  );
+
+  return messages.filter((message) => (
+    protectedMessageIds.has(message.id) || !isTelegramBridgeStatusText(message.text)
   ));
 }
