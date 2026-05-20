@@ -18,16 +18,11 @@ interface ReplyPreviewProps {
 
 export function TelegramInlineReplyPreview({ preview, compact = false, onOpenThread }: ReplyPreviewProps) {
   const previewClassName = `mb-2 flex w-full items-center gap-2 border-l-2 border-mc-accent/80 bg-black/15 px-2 py-1.5 text-left ${compact ? 'rounded text-[10px]' : 'rounded-md text-[11px]'}`;
-  const previewContent = (
-    <>
-      <span className="min-w-0 flex-1 truncate text-[#cbd6e2]">{preview.text}</span>
-      {onOpenThread && <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border border-mc-accent/50 text-xs font-semibold text-mc-accent">+</span>}
-    </>
-  );
+  const previewContent = <span className="min-w-0 flex-1 truncate text-[#cbd6e2]">{preview.text}</span>;
 
   if (onOpenThread) {
     return (
-      <button type="button" onClick={onOpenThread} className={`${previewClassName} transition-colors hover:border-mc-accent hover:bg-mc-accent/10`} aria-label="Open reply context">
+      <button type="button" onClick={onOpenThread} className={`${previewClassName} transition-colors hover:border-mc-accent hover:bg-mc-accent/10`} aria-label="Open thread">
         {previewContent}
       </button>
     );
@@ -66,16 +61,14 @@ export function TelegramMessageBubble({
   chatTitle,
 }: MessageBubbleProps) {
   const senderLabel = telegramDisplaySenderLabel(message, chatTitle);
-  const showHeaderThreadAffordance = canOpenThread && onOpenThread && !preview;
 
   return (
     <div className={message.isOutgoing ? (compact ? 'ml-6' : 'ml-8') : (compact ? 'mr-6' : 'mr-8')}>
       <div className={`rounded-lg border ${compact ? 'px-3 py-2.5' : 'px-3.5 py-2.5'} ${message.isOutgoing ? 'border-[#4f9ce8]/25 bg-[#234b73]' : 'border-[#314154] bg-[#17212f]'}`}>
         <div className="mb-2 flex items-center gap-3 text-[10px] text-[#aab3bd]">
           {senderLabel && <span>{senderLabel}</span>}
-          {message.isOutgoing && message.reactionCount > 0 && <span className="text-[#c6d0dc]">✓ acknowledged</span>}
+          {message.isOutgoing && message.reactionCount > 0 && <span className="text-[#c6d0dc]">✓ ack</span>}
           <span className="flex-1" />
-          {showHeaderThreadAffordance && <button onClick={() => onOpenThread(message)} className="flex h-5 w-5 items-center justify-center rounded-full border border-mc-accent/50 text-xs font-semibold text-mc-accent hover:bg-mc-accent/10" aria-label="Open reply context">+</button>}
           <button onClick={() => onReply(message)} className="hover:text-mc-accent">Reply</button>
           <span className="text-[#91a0af]">{formatTime(message.sentAt)}</span>
         </div>
@@ -116,7 +109,6 @@ interface ThreadModalProps {
 
 export function TelegramReplyContextModal({
   open,
-  title,
   messages,
   loading,
   loadingEarlier,
@@ -142,10 +134,7 @@ export function TelegramReplyContextModal({
       />
       <section className="pointer-events-auto relative flex h-[min(90vh,calc(100%-0.75rem))] w-[92vw] max-w-[78rem] flex-col overflow-hidden rounded-2xl border border-mc-border bg-mc-bg-secondary shadow-2xl shadow-black/50 md:h-[min(86vh,calc(100%-1.5rem))] md:w-[82vw]">
         <header className="flex items-center gap-3 border-b border-mc-border px-4 py-3">
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate text-sm font-semibold text-[#f5f7fb]">Reply context</h2>
-            <p className="truncate text-[11px] text-[#9aa6b2]">{title}</p>
-          </div>
+          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-[#f5f7fb]">Thread</h2>
           <button onClick={onClose} className="rounded p-1 text-[#9aa6b2] hover:bg-mc-bg-tertiary hover:text-white" aria-label="Close reply context">
             <X className="h-4 w-4" />
           </button>
@@ -177,6 +166,7 @@ export function TelegramReplyContextModal({
                 <div className={`rounded-lg border px-3.5 py-2.5 ${message.status === 'loaded' ? (message.isOutgoing ? 'border-[#4f9ce8]/25 bg-[#234b73]' : 'border-[#314154] bg-[#17212f]') : 'border-dashed border-mc-border bg-mc-bg/70'}`}>
                   <div className="mb-2 flex items-center gap-3 text-[10px] text-[#aab3bd]">
                     {displayLabel && <span>{displayLabel}</span>}
+                    {message.status === 'loaded' && message.isOutgoing && message.reactionCount > 0 && <span className="text-[#c6d0dc]">✓ ack</span>}
                     {message.status !== 'loaded' && <span className="text-[#91a0af]">{message.status === 'non_text' ? 'non-text' : 'unavailable'}</span>}
                     <span className="flex-1" />
                     {message.status === 'loaded' && <button onClick={() => onReply(message)} className="hover:text-mc-accent">Reply</button>}

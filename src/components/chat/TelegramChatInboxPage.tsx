@@ -276,7 +276,7 @@ export function TelegramChatInboxPage() {
         </div>
         <TelegramReplyContextModal
           open={Boolean(replyContext.threadAnchor)}
-          title="Telegram reply chain"
+          title="Thread"
           messages={replyContext.threadMessages}
           loading={replyContext.threadLoading}
           loadingEarlier={replyContext.threadLoadingEarlier}
