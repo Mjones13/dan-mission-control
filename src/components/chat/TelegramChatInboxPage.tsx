@@ -70,8 +70,13 @@ export function TelegramChatInboxPage() {
   const visibleMessages = useMemo(() => visibleTelegramMessages(messages), [messages]);
   const renderedMessages = useMemo(() => {
     if (!selectedChatId) return visibleMessages;
+    // Filters are intentionally client-side over currently loaded text messages.
+    // The read/starred state is Mission Control-local and should not trigger a
+    // Telegram history scan or change Telegram's native read state.
     return filterTelegramMessagesForView(visibleMessages, activeMessageFilter, (messageId) => getMarkerState(selectedChatId, messageId));
   }, [activeMessageFilter, getMarkerState, selectedChatId, visibleMessages]);
+  // Build reply-jump affordances from the rendered list, not the full cache, so
+  // every child target is present in the DOM when jumpToMessage runs.
   const directRepliesByParentId = useMemo(() => createLoadedDirectRepliesByParentId(renderedMessages), [renderedMessages]);
 
   useEffect(() => {
@@ -188,6 +193,9 @@ export function TelegramChatInboxPage() {
     const targetEl = scrollEl?.querySelector<HTMLElement>(`[data-telegram-message-id="${messageId}"]`);
     if (!scrollEl || !targetEl) return;
 
+    // Manual jumps should not be overridden by the normal "near bottom" auto
+    // scroll path on the next render; the short highlight makes the landing
+    // point visible after smooth scrolling.
     shouldScrollToBottomRef.current = false;
     const targetScrollTop = targetEl.offsetTop - ((scrollEl.clientHeight - targetEl.offsetHeight) / 2);
     scrollEl.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'smooth' });
@@ -263,6 +271,8 @@ export function TelegramChatInboxPage() {
       const readLabel = 'Mark this message read locally';
       const starLabel = 'Mark this message read and star for follow-up';
 
+      // In the unread queue, expose the two triage exits directly: handled now
+      // or handled later. Outside that queue the marker cycles through states.
       return (
         <div className="flex items-center gap-1" aria-label="Unread message marker actions">
           <button
@@ -323,6 +333,9 @@ export function TelegramChatInboxPage() {
     const hasMultipleReplies = directReplies.length > 1;
     const label = hasMultipleReplies ? `Show ${directReplies.length} replies` : 'Jump to reply';
 
+    // Single child replies can be jumped to immediately. Multiple children are
+    // sibling branches, so let the user choose instead of pretending there is a
+    // canonical next message in the thread.
     return (
       <div className="relative">
         <button

@@ -12,6 +12,9 @@ export function isTelegramMessageUnreadForMissionControl(
   message: Pick<TelegramMessage, 'isOutgoing'>,
   markerState: Pick<TelegramAgentMarkerState, 'isRead' | 'isStarred'>,
 ): boolean {
+  // Mission Control unread is a local triage state, not Telegram's server-side
+  // unread count: outgoing messages and starred follow-ups are hidden from the
+  // unread queue even if Telegram still considers the chat unread.
   return !message.isOutgoing && !markerState.isRead && !markerState.isStarred;
 }
 
@@ -31,6 +34,9 @@ export function filterTelegramMessagesForView(
 
   return unreadMessages.flatMap((message) => {
     const replyParent = message.replyToMessageId === null ? null : loadedMessagesById.get(message.replyToMessageId) || null;
+    // If an unread child is replying to M Jones/the agent's outgoing message,
+    // include that loaded parent immediately above it so the filtered view keeps
+    // enough conversation context without attempting another history fetch.
     if (!replyParent?.isOutgoing) return [message];
 
     return [replyParent, message];

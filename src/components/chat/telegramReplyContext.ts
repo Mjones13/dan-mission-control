@@ -99,6 +99,9 @@ export function shouldOfferThreadAction(message: Pick<TelegramMessage, 'id' | 'r
 }
 
 export function createLoadedDirectRepliesByParentId(localMessages: TelegramMessage[]): Map<number, TelegramMessage[]> {
+  // Only loaded messages can be used for child-reply navigation. Telegram does
+  // not provide reliable downward reply discovery here, so this map deliberately
+  // avoids implying that missing children have been exhaustively checked.
   const repliesByParentId = new Map<number, TelegramMessage[]>();
 
   for (const message of localMessages) {
@@ -109,6 +112,8 @@ export function createLoadedDirectRepliesByParentId(localMessages: TelegramMessa
   }
 
   repliesByParentId.forEach((replies) => {
+    // Message ids increase with send order in the local Telegram import, which
+    // gives deterministic jump/menu ordering without parsing display timestamps.
     replies.sort((a, b) => a.id - b.id);
   });
 

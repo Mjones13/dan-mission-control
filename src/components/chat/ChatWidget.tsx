@@ -114,6 +114,8 @@ export function ChatWidget() {
 
   const renderFilterButton = (filter: Exclude<TelegramMessageViewFilter, 'all'>, label: string) => {
     const active = activeMessageFilter === filter;
+    // Filter state lives in the shell so the compact header controls and
+    // message list stay synchronized while the widget is resized.
     return (
       <button
         type="button"

@@ -84,6 +84,9 @@ export function TelegramMessageBubble({
         {(showReadMarker || childNavigationNode) && (
           <div className="mt-2 flex justify-end">
             <div className="flex items-center gap-1">
+              {/* Child navigation and the local read marker share this compact
+                  footer so reply jumps stay visually tied to the message they
+                  operate on without crowding the bubble header actions. */}
               {childNavigationNode}
               {showReadMarker && (readMarkerNode || (onToggleRead && (
                 <button

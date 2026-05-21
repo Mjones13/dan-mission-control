@@ -52,6 +52,9 @@ export function TelegramChatWidgetContent({ isExpanded, activeMessageFilter, onM
   const visibleMessages = useMemo(() => visibleTelegramMessages(messages), [messages]);
   const renderedMessages = useMemo(() => {
     if (!selectedChat) return visibleMessages;
+    // Keep the floating widget's filters aligned with the full inbox: they are
+    // local triage views over already loaded messages, not Telegram read-state
+    // mutations or background history queries.
     return filterTelegramMessagesForView(visibleMessages, activeMessageFilter, (messageId) => getMarkerState(selectedChat.id, messageId));
   }, [activeMessageFilter, getMarkerState, selectedChat, visibleMessages]);
 
@@ -148,6 +151,8 @@ export function TelegramChatWidgetContent({ isExpanded, activeMessageFilter, onM
       const readLabel = 'Mark this message read locally';
       const starLabel = 'Mark this message read and star for follow-up';
 
+      // The unread view is a triage queue, so it offers explicit "done" and
+      // "follow up" exits instead of the normal compact marker cycle.
       return (
         <div className="flex items-center gap-1" aria-label="Unread message marker actions">
           <button

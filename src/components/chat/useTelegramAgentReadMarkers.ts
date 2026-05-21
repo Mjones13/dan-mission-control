@@ -143,6 +143,8 @@ export function markTelegramAgentMessageReadAndStarred(
   chatId: string,
   messageId: number,
 ): TelegramAgentMessageMarkers {
+  // Starred messages are also marked read so a follow-up cannot remain in both
+  // the local unread queue and the local starred queue at the same time.
   return markTelegramAgentMessageStarred(
     markTelegramAgentMessageRead(markers, chatId, messageId),
     chatId,
@@ -231,6 +233,10 @@ export function toggleTelegramAgentMessageRead(
 }
 
 export function replyParentReadMarkerIds(messages: TelegramMessage[]): number[] {
+  // When M Jones/the agent replies to an incoming message, treat the parent as
+  // locally handled. This does not acknowledge anything back to Telegram; it
+  // only keeps Mission Control's local triage queue from resurfacing answered
+  // prompts.
   const incomingMessageIds = new Set(messages.filter((message) => !message.isOutgoing).map((message) => message.id));
   const parentIds = messages
     .filter((message) => message.isOutgoing && message.replyToMessageId !== null && incomingMessageIds.has(message.replyToMessageId))
