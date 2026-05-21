@@ -43,6 +43,7 @@ interface MessageBubbleProps {
   showReadMarker?: boolean;
   readMarked?: boolean;
   readMarkerNode?: ReactNode;
+  childNavigationNode?: ReactNode;
   onToggleRead?: () => void;
   onReply(message: TelegramMessage): void;
   onOpenThread?(message: TelegramMessage): void;
@@ -57,6 +58,7 @@ export function TelegramMessageBubble({
   showReadMarker = false,
   readMarked = false,
   readMarkerNode,
+  childNavigationNode,
   onToggleRead,
   onReply,
   onOpenThread,
@@ -77,20 +79,23 @@ export function TelegramMessageBubble({
         </div>
         {preview && <TelegramInlineReplyPreview preview={preview} compact={compact} onOpenThread={canOpenThread && onOpenThread ? () => onOpenThread(message) : undefined} />}
         <LinkifiedText className="whitespace-pre-wrap text-sm leading-relaxed text-[#fbfdff]">{message.text}</LinkifiedText>
-        {showReadMarker && (
+        {(showReadMarker || childNavigationNode) && (
           <div className="mt-2 flex justify-end">
-            {readMarkerNode || (onToggleRead && (
-              <button
-                type="button"
-                onClick={onToggleRead}
-                aria-label={readMarked ? 'Marked read locally' : 'Mark this message read locally'}
-                aria-pressed={readMarked}
-                className={`flex ${compact ? 'h-5 w-5 text-xs' : 'h-6 w-6 text-sm'} items-center justify-center rounded-full border leading-none transition-colors ${readMarked ? 'border-mc-accent bg-mc-accent text-mc-bg shadow-[0_0_8px_rgba(88,166,255,0.35)]' : 'border-mc-border text-transparent hover:border-mc-accent hover:text-mc-accent'}`}
-                title={readMarked ? 'Marked read locally' : 'Mark this message read locally'}
-              >
-                {readMarked ? '✓' : ''}
-              </button>
-            ))}
+            <div className="flex items-center gap-1">
+              {childNavigationNode}
+              {showReadMarker && (readMarkerNode || (onToggleRead && (
+                <button
+                  type="button"
+                  onClick={onToggleRead}
+                  aria-label={readMarked ? 'Marked read locally' : 'Mark this message read locally'}
+                  aria-pressed={readMarked}
+                  className={`flex ${compact ? 'h-5 w-5 text-xs' : 'h-6 w-6 text-sm'} items-center justify-center rounded-full border leading-none transition-colors ${readMarked ? 'border-mc-accent bg-mc-accent text-mc-bg shadow-[0_0_8px_rgba(88,166,255,0.35)]' : 'border-mc-border text-transparent hover:border-mc-accent hover:text-mc-accent'}`}
+                  title={readMarked ? 'Marked read locally' : 'Mark this message read locally'}
+                >
+                  {readMarked ? '✓' : ''}
+                </button>
+              )))}
+            </div>
           </div>
         )}
       </div>

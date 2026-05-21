@@ -3,9 +3,11 @@ import test from 'node:test';
 import type { TelegramMessage } from './useTelegramChatInbox';
 import {
   appendDirectThreadExtensions,
+  createLoadedDirectRepliesByParentId,
   createReplyContextLookup,
   createUnavailableReplyContextMessage,
   getInlineReplyPreview,
+  getLoadedDirectReplies,
   inferTelegramChatActorLabel,
   latestLoadedThreadMessage,
   loadReplyContextBatch,
@@ -116,6 +118,28 @@ test('shouldOfferThreadAction covers parent replies and cached child replies', (
 
   assert.equal(shouldOfferThreadAction(child, [parent, child]), true);
   assert.equal(shouldOfferThreadAction(parent, [parent, child]), true);
+});
+
+test('createLoadedDirectRepliesByParentId groups direct replies in ascending message order', () => {
+  const parent = message(1);
+  const laterChild = message(4, { replyToMessageId: 1 });
+  const unrelatedGrandchild = message(5, { replyToMessageId: 4 });
+  const earlierChild = message(2, { replyToMessageId: 1 });
+
+  const repliesByParentId = createLoadedDirectRepliesByParentId([parent, laterChild, unrelatedGrandchild, earlierChild]);
+
+  assert.deepEqual(repliesByParentId.get(1)?.map((item) => item.id), [2, 4]);
+  assert.deepEqual(repliesByParentId.get(4)?.map((item) => item.id), [5]);
+});
+
+test('getLoadedDirectReplies returns direct children only', () => {
+  const parent = message(1);
+  const child = message(2, { replyToMessageId: 1 });
+  const grandchild = message(3, { replyToMessageId: 2 });
+  const siblingParent = message(4);
+
+  assert.deepEqual(getLoadedDirectReplies(parent, [parent, child, grandchild, siblingParent]).map((item) => item.id), [2]);
+  assert.deepEqual(getLoadedDirectReplies(siblingParent, [parent, child, grandchild, siblingParent]), []);
 });
 
 test('latestLoadedThreadMessage selects newest visible loaded thread message for composer reply target', () => {

@@ -98,6 +98,27 @@ export function shouldOfferThreadAction(message: Pick<TelegramMessage, 'id' | 'r
   return localMessages.some((candidate) => candidate.replyToMessageId === message.id);
 }
 
+export function createLoadedDirectRepliesByParentId(localMessages: TelegramMessage[]): Map<number, TelegramMessage[]> {
+  const repliesByParentId = new Map<number, TelegramMessage[]>();
+
+  for (const message of localMessages) {
+    if (message.replyToMessageId === null) continue;
+    const replies = repliesByParentId.get(message.replyToMessageId) || [];
+    replies.push(message);
+    repliesByParentId.set(message.replyToMessageId, replies);
+  }
+
+  repliesByParentId.forEach((replies) => {
+    replies.sort((a, b) => a.id - b.id);
+  });
+
+  return repliesByParentId;
+}
+
+export function getLoadedDirectReplies(message: Pick<TelegramMessage, 'id'>, localMessages: TelegramMessage[]): TelegramMessage[] {
+  return createLoadedDirectRepliesByParentId(localMessages).get(message.id) || [];
+}
+
 export function latestLoadedThreadMessage(threadMessages: TelegramReplyContextMessage[]): TelegramMessage | null {
   // The composer should continue the visible chain, so unavailable placeholder
   // rows are skipped and the newest real Telegram message becomes the replyTo.
