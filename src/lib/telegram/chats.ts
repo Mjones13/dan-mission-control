@@ -1,6 +1,8 @@
 import { Api } from 'telegram';
+import type { TelegramClient } from 'telegram';
 import { isTelegramBridgeStatusMessage } from './bridge-status';
-import { createTelegramClient } from './client';
+import { withTelegramClient } from './client-manager';
+import { getGroupDialogsCached, type TelegramDialog } from './dialog-cache';
 
 export interface TelegramGroupChatSummary {
   id: string;
@@ -13,8 +15,8 @@ export interface TelegramGroupChatSummary {
 }
 
 async function clearUnreadBridgeStatusMessages(
-  client: ReturnType<typeof createTelegramClient>,
-  dialog: Awaited<ReturnType<ReturnType<typeof createTelegramClient>['getDialogs']>>[number],
+  client: TelegramClient,
+  dialog: TelegramDialog,
 ): Promise<number> {
   const unreadCount = dialog.unreadCount || 0;
   if (unreadCount <= 0 || !dialog.inputEntity) return 0;
@@ -39,38 +41,30 @@ async function clearUnreadBridgeStatusMessages(
 }
 
 export async function listTelegramGroupChats(limit = 50): Promise<TelegramGroupChatSummary[]> {
-  const client = createTelegramClient();
-  await client.connect();
+  return withTelegramClient(
+    { operation: 'telegram.chats.list', priority: 'background' },
+    async (client) => {
+      const dialogs = await getGroupDialogsCached(client, { limit, maxAgeMs: 1_000 });
 
-  try {
-    const authorized = await client.checkAuthorization();
-    if (!authorized) {
-      throw new Error('TELEGRAM_SESSION_REQUIRED');
-    }
+      const summaries = await Promise.all(dialogs
+        .map(async (dialog) => {
+          const lastMessagePreview = dialog.message && 'message' in dialog.message && typeof dialog.message.message === 'string'
+            ? dialog.message.message
+            : null;
+          const clearedBridgeCount = await clearUnreadBridgeStatusMessages(client, dialog).catch(() => 0);
 
-    const dialogs = await client.getDialogs({ limit });
+          return {
+            id: dialog.id?.toString() || '',
+            title: dialog.title || dialog.name || 'Untitled group',
+            unreadCount: Math.max((dialog.unreadCount || 0) - clearedBridgeCount, 0),
+            isGroup: dialog.isGroup,
+            isChannel: dialog.isChannel,
+            lastMessageAt: dialog.date ? new Date(dialog.date * 1000).toISOString() : null,
+            lastMessagePreview,
+          };
+        }));
 
-    const summaries = await Promise.all(dialogs
-      .filter((dialog) => dialog.isGroup)
-      .map(async (dialog) => {
-        const lastMessagePreview = dialog.message && 'message' in dialog.message && typeof dialog.message.message === 'string'
-          ? dialog.message.message
-          : null;
-        const clearedBridgeCount = await clearUnreadBridgeStatusMessages(client, dialog).catch(() => 0);
-
-        return {
-          id: dialog.id?.toString() || '',
-          title: dialog.title || dialog.name || 'Untitled group',
-          unreadCount: Math.max((dialog.unreadCount || 0) - clearedBridgeCount, 0),
-          isGroup: dialog.isGroup,
-          isChannel: dialog.isChannel,
-          lastMessageAt: dialog.date ? new Date(dialog.date * 1000).toISOString() : null,
-          lastMessagePreview,
-        };
-      }));
-
-    return summaries.filter((chat) => chat.id.length > 0);
-  } finally {
-    await client.disconnect();
-  }
+      return summaries.filter((chat) => chat.id.length > 0);
+    },
+  );
 }

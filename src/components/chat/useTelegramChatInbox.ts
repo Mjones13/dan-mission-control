@@ -68,11 +68,11 @@ export interface UseTelegramChatInboxResult {
   refreshSelectedMessages(options?: { background?: boolean }): Promise<void>;
 }
 
-const MESSAGE_BATCH_SIZE = 25;
+const MESSAGE_BATCH_SIZE = 50;
 const REQUEST_TIMEOUT_MS = 12000;
 const MARK_READ_TIMEOUT_MS = 30000;
 const MAX_CACHED_CHATS = 20;
-const MAX_MESSAGES_PER_CHAT = 150;
+const MAX_MESSAGES_PER_CHAT = 500;
 const SELECTED_MESSAGE_REFRESH_STALE_MS = 5000;
 
 // Wrap every chat fetch with a timeout while still honoring caller-owned aborts,

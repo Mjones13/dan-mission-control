@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getTelegramClientManagerHealth } from '@/lib/telegram/client-manager';
 import { getTelegramConfigStatus } from '@/lib/telegram/config';
 import { getTelegramPollingPolicy } from '@/lib/telegram/policy';
 import { hasTelegramSession } from '@/lib/telegram/session-store';
@@ -9,6 +10,7 @@ export async function GET() {
   const config = getTelegramConfigStatus();
   const sessionExists = config.configured ? hasTelegramSession(config.sessionPath) : false;
   const telegramPolicy = getTelegramPollingPolicy();
+  const telegramClient = getTelegramClientManagerHealth();
 
   return NextResponse.json({
     available: config.configured,
@@ -24,6 +26,7 @@ export async function GET() {
       exists: sessionExists,
     },
     telegramPolicy,
+    telegramClient,
     nextStep: !config.configured
       ? 'Set TELEGRAM_API_ID and TELEGRAM_API_HASH in .env.local.'
       : sessionExists

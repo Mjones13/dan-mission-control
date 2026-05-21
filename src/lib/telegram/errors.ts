@@ -11,6 +11,9 @@ function getErrorMessage(error: unknown): string {
 
 export function toTelegramSafeError(error: unknown): TelegramSafeError {
   const message = getErrorMessage(error);
+  const errorName = error instanceof Error ? error.name : '';
+  const combined = `${errorName} ${message}`;
+
   const floodWait = message.match(/FLOOD_WAIT_(\d+)/);
   if (floodWait) {
     const waitSeconds = Number(floodWait[1]);
@@ -35,6 +38,34 @@ export function toTelegramSafeError(error: unknown): TelegramSafeError {
     return {
       code: 'SESSION_PASSWORD_NEEDED',
       message: 'Telegram requires your 2FA password to finish sign-in.',
+    };
+  }
+
+  if (message.includes('TELEGRAM_SESSION_REQUIRED') || /Unauthorized|AUTH_KEY_UNREGISTERED|SESSION_REVOKED/i.test(combined)) {
+    return {
+      code: 'UNAUTHORIZED',
+      message: 'Telegram session authorization is required.',
+    };
+  }
+
+  if (/AUTH_KEY|AuthKey/i.test(combined)) {
+    return {
+      code: 'AUTH_KEY',
+      message: 'Telegram session key is invalid. Re-authentication may be required.',
+    };
+  }
+
+  if (/Cannot send requests while disconnected|CONNECTION_NOT_INITED|disconnected/i.test(combined)) {
+    return {
+      code: 'DISCONNECTED',
+      message: 'Telegram client disconnected before the request completed.',
+    };
+  }
+
+  if (/TIMEOUT|TimedOut|timeout/i.test(combined)) {
+    return {
+      code: 'TIMEOUT',
+      message: 'Telegram request timed out. Check the latest messages before retrying sends.',
     };
   }
 
