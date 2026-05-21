@@ -21,6 +21,18 @@ export function appendedMessageCount(previousIds: number[], currentIds: number[]
   return currentIds.length - (previousInCurrentStart + previousIds.length);
 }
 
+export function shouldRestoreOlderMessageAnchor(change: MessageListChange, loadOlderRequested: boolean): boolean {
+  return loadOlderRequested && (change === 'prepend' || change === 'mixed');
+}
+
+export function getScrollBottom(scrollHeight: number, scrollTop: number, clientHeight: number): number {
+  return scrollHeight - scrollTop - clientHeight;
+}
+
+export function scrollTopForPreservedBottom(scrollHeight: number, scrollBottom: number, clientHeight: number): number {
+  return scrollHeight - scrollBottom - clientHeight;
+}
+
 export function restoredScrollTopForHeightDelta(beforeScrollTop: number, beforeScrollHeight: number, afterScrollHeight: number): number {
   return beforeScrollTop + (afterScrollHeight - beforeScrollHeight);
 }

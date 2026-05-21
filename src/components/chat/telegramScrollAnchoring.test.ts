@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { appendedMessageCount, classifyMessageListChange, restoredScrollTopForHeightDelta } from './telegramScrollAnchoring';
+import {
+  appendedMessageCount,
+  classifyMessageListChange,
+  getScrollBottom,
+  restoredScrollTopForHeightDelta,
+  scrollTopForPreservedBottom,
+  shouldRestoreOlderMessageAnchor,
+} from './telegramScrollAnchoring';
 
 describe('telegramScrollAnchoring', () => {
   it('classifies appended message ids', () => {
@@ -26,5 +33,18 @@ describe('telegramScrollAnchoring', () => {
 
   it('calculates scrollTop restoration from a scrollHeight delta', () => {
     assert.equal(restoredScrollTopForHeightDelta(240, 1000, 1425), 665);
+  });
+
+  it('calculates preserved scrollBottom for explicit load-older anchoring', () => {
+    const oldScrollBottom = getScrollBottom(1000, 240, 400);
+    assert.equal(oldScrollBottom, 360);
+    assert.equal(scrollTopForPreservedBottom(1425, oldScrollBottom, 400), 665);
+  });
+
+  it('prioritizes older-message anchoring only for explicit load-older prepends', () => {
+    assert.equal(shouldRestoreOlderMessageAnchor('prepend', true), true);
+    assert.equal(shouldRestoreOlderMessageAnchor('mixed', true), true);
+    assert.equal(shouldRestoreOlderMessageAnchor('append', true), false);
+    assert.equal(shouldRestoreOlderMessageAnchor('prepend', false), false);
   });
 });

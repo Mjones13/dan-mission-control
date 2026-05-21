@@ -10,52 +10,22 @@ import { playTelegramSentSound, primeTelegramSentSound } from '@/lib/audio/teleg
 import { canStartTelegramSend, recoverFailedTelegramDraft, shouldSendTelegramComposerFromKeyDown, telegramSendButtonClassName } from './telegramComposerSendState';
 import { useTelegramReplyContext } from './useTelegramReplyContext';
 import { TelegramMessageBubble, TelegramReplyContextModal } from './TelegramReplyContextViews';
-import { appendedMessageCount, classifyMessageListChange, restoredScrollTopForHeightDelta } from './telegramScrollAnchoring';
+import {
+  appendedMessageCount,
+  classifyMessageListChange,
+  getScrollBottom,
+  scrollTopForPreservedBottom,
+  shouldRestoreOlderMessageAnchor,
+} from './telegramScrollAnchoring';
 
 const CHAT_FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif';
 
-type ScrollAnchorSnapshot = {
+type ScrollSnapshot = {
   scrollTop: number;
-  scrollHeight: number;
-  anchorMessageId?: number;
-  anchorOffsetTop?: number;
 };
 
-function getScrollAnchorSnapshot(el: HTMLDivElement): ScrollAnchorSnapshot {
-  const containerRect = el.getBoundingClientRect();
-  const messageElements = Array.from(el.querySelectorAll<HTMLElement>('[data-message-id]'));
-  const firstVisibleMessage = messageElements.find((messageElement) => {
-    const rect = messageElement.getBoundingClientRect();
-    return rect.bottom > containerRect.top && rect.top < containerRect.bottom;
-  });
-
-  if (!firstVisibleMessage) {
-    return { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight };
-  }
-
-  const anchorMessageId = Number(firstVisibleMessage.dataset.messageId);
-  return {
-    scrollTop: el.scrollTop,
-    scrollHeight: el.scrollHeight,
-    anchorMessageId: Number.isFinite(anchorMessageId) ? anchorMessageId : undefined,
-    anchorOffsetTop: firstVisibleMessage.getBoundingClientRect().top - containerRect.top,
-  };
-}
-
-function restoreScrollAnchor(el: HTMLDivElement, snapshot: ScrollAnchorSnapshot, fallback: 'delta' | 'scrollTop') {
-  if (snapshot.anchorMessageId !== undefined && snapshot.anchorOffsetTop !== undefined) {
-    const anchorElement = el.querySelector<HTMLElement>(`[data-message-id="${snapshot.anchorMessageId}"]`);
-    if (anchorElement) {
-      const containerRect = el.getBoundingClientRect();
-      const anchorOffsetTop = anchorElement.getBoundingClientRect().top - containerRect.top;
-      el.scrollTop += anchorOffsetTop - snapshot.anchorOffsetTop;
-      return;
-    }
-  }
-
-  el.scrollTop = fallback === 'delta'
-    ? restoredScrollTopForHeightDelta(snapshot.scrollTop, snapshot.scrollHeight, el.scrollHeight)
-    : snapshot.scrollTop;
+function getScrollSnapshot(el: HTMLDivElement): ScrollSnapshot {
+  return { scrollTop: el.scrollTop };
 }
 
 export function TelegramChatInboxPage() {
@@ -85,7 +55,8 @@ export function TelegramChatInboxPage() {
   const shouldScrollToBottomRef = useRef(true);
   const isNearBottomRef = useRef(true);
   const scrollStateRef = useRef<{ chatId: string | null; messageIds: number[] }>({ chatId: null, messageIds: [] });
-  const preRenderScrollSnapshotRef = useRef<ScrollAnchorSnapshot | null>(null);
+  const preRenderScrollSnapshotRef = useRef<ScrollSnapshot | null>(null);
+  const loadOlderAnchorPendingRef = useRef<{ chatId: string; scrollBottom: number } | null>(null);
   const [unseenNewMessageCount, setUnseenNewMessageCount] = useState(0);
   const previousChatIdRef = useRef<string | null>(null);
   const trimmedComposerText = composerText.trim();
@@ -128,17 +99,17 @@ export function TelegramChatInboxPage() {
         el.scrollTop = el.scrollHeight;
       }
       setUnseenNewMessageCount(0);
-    } else if (shouldScrollToBottomRef.current || wasNearBottom) {
-      el.scrollTop = el.scrollHeight;
-      setUnseenNewMessageCount(0);
-    } else if ((messageListChange === 'prepend' || messageListChange === 'mixed') && beforeSnapshot) {
-      restoreScrollAnchor(el, beforeSnapshot, 'delta');
+    } else if (shouldRestoreOlderMessageAnchor(messageListChange, loadOlderAnchorPendingRef.current?.chatId === selectedChatId) && loadOlderAnchorPendingRef.current) {
+      el.scrollTop = scrollTopForPreservedBottom(el.scrollHeight, loadOlderAnchorPendingRef.current.scrollBottom, el.clientHeight);
       const newCount = appendedMessageCount(previousScrollState.messageIds, currentMessageIds);
       if (newCount > 0) {
         setUnseenNewMessageCount((count) => count + newCount);
       }
-    } else if (messageListChange === 'append' && beforeSnapshot) {
-      restoreScrollAnchor(el, beforeSnapshot, 'scrollTop');
+    } else if (shouldScrollToBottomRef.current || wasNearBottom) {
+      el.scrollTop = el.scrollHeight;
+      setUnseenNewMessageCount(0);
+    } else if ((messageListChange === 'append' || messageListChange === 'prepend' || messageListChange === 'mixed') && beforeSnapshot) {
+      el.scrollTop = beforeSnapshot.scrollTop;
       const newCount = appendedMessageCount(previousScrollState.messageIds, currentMessageIds);
       if (newCount > 0) {
         setUnseenNewMessageCount((count) => count + newCount);
@@ -149,13 +120,14 @@ export function TelegramChatInboxPage() {
 
     shouldScrollToBottomRef.current = false;
     preRenderScrollSnapshotRef.current = null;
+    loadOlderAnchorPendingRef.current = null;
     scrollStateRef.current = { chatId: selectedChatId, messageIds: currentMessageIds };
     if (selectedCacheEntry?.scrollTop !== el.scrollTop) {
       setChatScrollTop(selectedChatId, el.scrollTop);
     }
 
     return () => {
-      preRenderScrollSnapshotRef.current = getScrollAnchorSnapshot(el);
+      preRenderScrollSnapshotRef.current = getScrollSnapshot(el);
     };
   }, [renderedMessages, selectedCacheEntry?.scrollTop, selectedChatId, setChatScrollTop]);
 
@@ -183,8 +155,11 @@ export function TelegramChatInboxPage() {
 
   const handleLoadOlderMessages = async () => {
     const el = scrollRef.current;
-    if (el) {
-      preRenderScrollSnapshotRef.current = getScrollAnchorSnapshot(el);
+    if (el && selectedChatId) {
+      loadOlderAnchorPendingRef.current = {
+        chatId: selectedChatId,
+        scrollBottom: getScrollBottom(el.scrollHeight, el.scrollTop, el.clientHeight),
+      };
     }
     shouldScrollToBottomRef.current = false;
     await loadOlderMessages();
