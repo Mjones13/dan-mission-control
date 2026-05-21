@@ -10,6 +10,7 @@ interface QueuedTask<T> {
   reject: (error: unknown) => void;
 }
 
+// Minimal FIFO limiter for GramJS calls; keeping it local avoids adding runtime dependencies.
 export class TelegramRpcLimiter {
   private active = 0;
   private readonly queue: QueuedTask<unknown>[] = [];
@@ -30,6 +31,7 @@ export class TelegramRpcLimiter {
 
   async run<T>(task: () => Promise<T>): Promise<T> {
     if (this.active >= this.concurrency) {
+      // Queue the original task so execution starts only after a slot opens, not while waiting.
       return new Promise<T>((resolve, reject) => {
         this.queue.push({ run: task, resolve: resolve as (value: unknown) => void, reject });
       });
@@ -49,6 +51,7 @@ export class TelegramRpcLimiter {
   }
 
   private drain() {
+    // Start queued tasks without awaiting them; each task releases its own slot in runNow().
     while (this.active < this.concurrency && this.queue.length > 0) {
       const next = this.queue.shift();
       if (!next) return;

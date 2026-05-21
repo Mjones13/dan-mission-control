@@ -5,6 +5,7 @@ import { toTelegramSafeError } from './errors';
 import { TelegramRpcLimiter, type TelegramRpcLimitSnapshot } from './rpc-limiter';
 
 type ManagedTelegramClient = TelegramClient & {
+  // GramJS exposes these lifecycle flags at runtime, but not consistently through its TS types.
   connected?: boolean;
   disconnected?: boolean;
   destroy?: () => Promise<void> | void;
@@ -73,7 +74,9 @@ interface TelegramClientManagerInternals {
   clientFactory: () => ManagedTelegramClient;
 }
 
+// Re-check authorization periodically without paying the GramJS round-trip on every warmed request.
 const AUTHORIZATION_TTL_MS = 45_000;
+// Next.js can reload modules in development, so store the warm client on a process-wide symbol.
 const GLOBAL_KEY = Symbol.for('missionControl.telegramClientManager');
 const isTest = process.env.NODE_ENV === 'test';
 
@@ -116,6 +119,7 @@ function getManager(): TelegramClientManagerInternals {
 let testManager = createManager();
 
 function isConnected(client: ManagedTelegramClient | null): boolean {
+  // Treat missing flags as connected because older/mocked GramJS clients may not expose both fields.
   return Boolean(client && client.connected !== false && client.disconnected !== true);
 }
 
@@ -129,6 +133,7 @@ function createRequestId() {
 }
 
 function classifyForManager(error: unknown): { code: string; shouldResetClient: boolean } {
+  // Only reset the warm client for errors that imply the session or transport is no longer usable.
   const safe = toTelegramSafeError(error);
   const message = error instanceof Error ? error.message : String(error);
   const name = error instanceof Error ? error.name : '';
@@ -143,6 +148,7 @@ function classifyForManager(error: unknown): { code: string; shouldResetClient: 
 
 async function cleanupClient(client: ManagedTelegramClient | null): Promise<void> {
   if (!client) return;
+  // Prefer destroy when available so GramJS releases reconnect timers as well as the socket.
   if (typeof client.destroy === 'function') {
     await client.destroy();
     return;
@@ -151,6 +157,7 @@ async function cleanupClient(client: ManagedTelegramClient | null): Promise<void
 }
 
 async function ensureConnectedAuthorized(requireAuthorization: boolean): Promise<EnsureResult> {
+  // Share one connect/auth attempt across concurrent requests to avoid parallel GramJS handshakes.
   const manager = getManager();
   const existing = manager.client;
   if (isConnected(existing) && (!requireAuthorization || authorizationFresh(manager))) {
@@ -231,6 +238,10 @@ function registerShutdownHooks(manager: TelegramClientManagerInternals) {
   process.once('SIGTERM', cleanup);
 }
 
+/**
+ * Leases the process-warm Telegram client, ensuring it is connected and authorized before use.
+ * Callers should keep work inside the callback so RPC limiting and reset-on-failure stay centralized.
+ */
 export async function withTelegramClient<T>(
   options: WithTelegramClientOptions,
   fn: (client: TelegramClient, meta: TelegramClientLeaseMeta) => Promise<T>,
@@ -292,12 +303,14 @@ export function getTelegramClientManagerHealth(): TelegramClientManagerHealth {
 export async function resetTelegramClientManager(reason: string): Promise<void> {
   const manager = getManager();
   const client = manager.client;
+  // Generation lets in-flight observers tell that future leases may point at a different client.
   manager.generation += 1;
   manager.state = 'resetting';
   manager.client = null;
   manager.connectPromise = null;
   manager.createdAt = null;
   manager.lastAuthorizedAt = null;
+  // Dialog entities are tied to the current GramJS session, so discard them with the client.
   clearTelegramDialogCache();
 
   try {

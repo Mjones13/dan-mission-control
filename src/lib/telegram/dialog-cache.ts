@@ -18,6 +18,10 @@ let inFlight: DialogInFlightEntry | null = null;
 
 const DEFAULT_MAX_AGE_MS = 3_000;
 
+/**
+ * Caches the short-lived group dialog list so chat/message calls can reuse GramJS input entities.
+ * A cached result with a higher limit can satisfy smaller requests without another Telegram RPC.
+ */
 export async function getGroupDialogsCached(
   client: TelegramClient,
   options: { limit?: number; maxAgeMs?: number } = {},
@@ -31,11 +35,13 @@ export async function getGroupDialogsCached(
   }
 
   if (inFlight && inFlight.limit >= limit) {
+    // Collapse concurrent refreshes; callers slice their requested window after the shared fetch resolves.
     const dialogs = await inFlight.promise;
     return dialogs.slice(0, limit);
   }
 
   const promise = client.getDialogs({ limit }).then((dialogs) => {
+    // Store only group dialogs because all current consumers require group input entities.
     const groupDialogs = dialogs.filter((dialog) => dialog.isGroup);
     cache = { limit, createdAtMs: Date.now(), dialogs: groupDialogs };
     return groupDialogs;

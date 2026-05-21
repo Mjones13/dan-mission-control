@@ -10,6 +10,7 @@ function getErrorMessage(error: unknown): string {
 }
 
 export function toTelegramSafeError(error: unknown): TelegramSafeError {
+  // Return operator-safe messages; raw GramJS errors may include noisy internals for server logs only.
   const message = getErrorMessage(error);
   const errorName = error instanceof Error ? error.name : '';
   const combined = `${errorName} ${message}`;
