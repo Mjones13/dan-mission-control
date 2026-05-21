@@ -1,6 +1,7 @@
 import { Api } from 'telegram';
 import { getTelegramConfig } from './config';
 import { createTelegramClient } from './client';
+import { resetTelegramClientManager } from './client-manager';
 import { writeTelegramSession } from './session-store';
 
 interface SendCodeResult {
@@ -15,11 +16,12 @@ interface SignInResult {
 let pendingPhoneNumber: string | null = null;
 let pendingPhoneCodeHash: string | null = null;
 
-function saveClientSession(client: ReturnType<typeof createTelegramClient>) {
+async function saveClientSession(client: ReturnType<typeof createTelegramClient>) {
   const config = getTelegramConfig();
   const session = client.session.save() as unknown;
   if (typeof session === 'string' && session.length > 0) {
     writeTelegramSession(config.sessionPath, session);
+    await resetTelegramClientManager('auth-session-updated');
   }
 }
 
@@ -36,7 +38,7 @@ export async function sendTelegramLoginCode(phoneNumber: string): Promise<SendCo
 
     pendingPhoneNumber = phoneNumber;
     pendingPhoneCodeHash = result.phoneCodeHash;
-    saveClientSession(client);
+    await saveClientSession(client);
 
     return { isCodeViaApp: result.isCodeViaApp };
   } finally {
@@ -59,13 +61,13 @@ export async function signInTelegramWithCode(code: string): Promise<SignInResult
       phoneCode: code,
     }));
 
-    saveClientSession(client);
+    await saveClientSession(client);
     pendingPhoneNumber = null;
     pendingPhoneCodeHash = null;
 
     return { authorized: true, needsPassword: false };
   } catch (error) {
-    saveClientSession(client);
+    await saveClientSession(client);
     if (error instanceof Error && error.message.includes('SESSION_PASSWORD_NEEDED')) {
       return { authorized: false, needsPassword: true };
     }
@@ -89,7 +91,7 @@ export async function signInTelegramWithPassword(password: string): Promise<Sign
       },
     );
 
-    saveClientSession(client);
+    await saveClientSession(client);
     pendingPhoneNumber = null;
     pendingPhoneCodeHash = null;
 
