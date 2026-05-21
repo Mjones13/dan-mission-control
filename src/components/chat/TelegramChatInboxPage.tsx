@@ -54,7 +54,7 @@ export function TelegramChatInboxPage() {
   const [activeMessageFilter, setActiveMessageFilter] = useState<TelegramMessageViewFilter>('all');
   const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
   const [openChildReplyMenuFor, setOpenChildReplyMenuFor] = useState<number | null>(null);
-  const { getMarkerState, markReadMarker, markReplyParentsRead, cycleMarker } = useTelegramAgentReadMarkers();
+  const { getMarkerState, markReadMarker, markReadAndStarredMarker, markReplyParentsRead, cycleMarker } = useTelegramAgentReadMarkers();
   const replyContext = useTelegramReplyContext({ chatId: selectedChatId, messages });
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(true);
@@ -189,7 +189,8 @@ export function TelegramChatInboxPage() {
     if (!scrollEl || !targetEl) return;
 
     shouldScrollToBottomRef.current = false;
-    targetEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    const targetScrollTop = targetEl.offsetTop - ((scrollEl.clientHeight - targetEl.offsetHeight) / 2);
+    scrollEl.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'smooth' });
     setHighlightedMessageId(messageId);
     setOpenChildReplyMenuFor(null);
     window.setTimeout(() => {
@@ -258,6 +259,34 @@ export function TelegramChatInboxPage() {
   };
 
   const renderMessageMarkerButton = (chatId: string, messageId: number) => {
+    if (activeMessageFilter === 'unread') {
+      const readLabel = 'Mark this message read locally';
+      const starLabel = 'Mark this message read and star for follow-up';
+
+      return (
+        <div className="flex items-center gap-1" aria-label="Unread message marker actions">
+          <button
+            type="button"
+            onClick={() => markReadMarker(chatId, messageId)}
+            aria-label={readLabel}
+            className="flex h-6 w-6 items-center justify-center rounded-full border border-mc-border text-transparent leading-none transition-colors hover:border-mc-accent hover:text-mc-accent"
+            title={readLabel}
+          >
+            ✓
+          </button>
+          <button
+            type="button"
+            onClick={() => markReadAndStarredMarker(chatId, messageId)}
+            aria-label={starLabel}
+            className="flex h-6 w-6 items-center justify-center rounded-full border border-mc-border bg-transparent text-sm leading-none text-[#9aa6b2] transition-colors hover:border-yellow-300 hover:text-yellow-300"
+            title={starLabel}
+          >
+            ☆
+          </button>
+        </div>
+      );
+    }
+
     const markerState = getMarkerState(chatId, messageId);
     const markerLabel = markerState.displayState === 'starred'
       ? 'Clear local read and follow-up markers'
@@ -307,7 +336,7 @@ export function TelegramChatInboxPage() {
           }}
           aria-label={label}
           aria-expanded={hasMultipleReplies ? openChildReplyMenuFor === message.id : undefined}
-          className="flex h-6 min-w-6 items-center justify-center rounded-full border border-mc-border px-1.5 text-xs leading-none text-[#9aa6b2] transition-colors hover:border-mc-accent hover:text-mc-accent"
+          className="flex h-6 min-w-6 items-center justify-center px-1.5 text-xs leading-none text-[#9aa6b2] transition-colors hover:text-mc-accent"
           title={label}
         >
           ↓{hasMultipleReplies ? <span className="ml-0.5 text-[10px]">{directReplies.length}</span> : null}
@@ -332,12 +361,12 @@ export function TelegramChatInboxPage() {
     );
   };
 
-  const renderFilterButton = (filter: TelegramMessageViewFilter, label: string) => {
+  const renderFilterButton = (filter: Exclude<TelegramMessageViewFilter, 'all'>, label: string) => {
     const active = activeMessageFilter === filter;
     return (
       <button
         type="button"
-        onClick={() => setActiveMessageFilter(filter)}
+        onClick={() => setActiveMessageFilter((current) => (current === filter ? 'all' : filter))}
         aria-pressed={active}
         className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${active ? 'border-mc-accent bg-mc-accent text-mc-bg' : 'border-mc-border text-[#9aa6b2] hover:border-mc-accent hover:text-mc-accent'}`}
       >
@@ -429,7 +458,6 @@ export function TelegramChatInboxPage() {
                     )}
                   </div>
                   <div className="flex items-center gap-1.5">
-                    {renderFilterButton('all', 'All')}
                     {renderFilterButton('unread', 'Unread')}
                     {renderFilterButton('starred', '★ Starred')}
                   </div>
@@ -456,15 +484,14 @@ export function TelegramChatInboxPage() {
                             : 'No messages in this chat.'}
                       </div>
                     )}
-                    {renderedMessages.map((message) => {
+                    {renderedMessages.map((message, index) => {
                       const directReplies = directRepliesByParentId.get(message.id) || [];
 
                       return (
                         <div
-                          key={message.id}
+                          key={`${message.id}-${index}`}
                           data-message-id={message.id}
                           data-telegram-message-id={message.id}
-                          className={`rounded-xl transition-[background-color,box-shadow] duration-300 ${highlightedMessageId === message.id ? 'bg-mc-accent/10 shadow-[0_0_0_2px_rgba(88,166,255,0.65)]' : ''}`}
                         >
                           <TelegramMessageBubble
                             message={message}
@@ -475,6 +502,7 @@ export function TelegramChatInboxPage() {
                             showReadMarker={!message.isOutgoing && Boolean(selectedChatId)}
                             readMarkerNode={selectedChatId ? renderMessageMarkerButton(selectedChatId, message.id) : undefined}
                             childNavigationNode={renderChildNavigationButton(message, directReplies)}
+                            highlighted={highlightedMessageId === message.id}
                             chatTitle={selectedChatTitle}
                           />
                         </div>

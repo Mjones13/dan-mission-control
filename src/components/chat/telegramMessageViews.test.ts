@@ -55,6 +55,49 @@ test('filterTelegramMessagesForViewWithMarkers returns incoming locally unhandle
   );
 });
 
+test('filterTelegramMessagesForViewWithMarkers pairs M Jones-authored loaded reply parents immediately before unread replies', () => {
+  const messages = [
+    message(1, { isOutgoing: true }),
+    message(2, { isOutgoing: true }),
+    message(3, { replyToMessageId: 1 }),
+    message(4, { replyToMessageId: 99 }),
+    message(5, { isOutgoing: true, replyToMessageId: 3 }),
+  ];
+
+  assert.deepEqual(
+    filterTelegramMessagesForViewWithMarkers(messages, 'chat-1', 'unread', { read: {}, starred: {} }).map((item) => item.id),
+    [1, 3, 4],
+  );
+});
+
+test('filterTelegramMessagesForViewWithMarkers excludes non-M-Jones reply parents from unread context', () => {
+  const messages = [
+    message(1),
+    message(2, { replyToMessageId: 1 }),
+  ];
+
+  assert.deepEqual(
+    filterTelegramMessagesForViewWithMarkers(messages, 'chat-1', 'unread', { read: { 'chat-1': [1] }, starred: {} }).map((item) => item.id),
+    [2],
+  );
+});
+
+test('filterTelegramMessagesForViewWithMarkers orders unread messages chronologically while pairing local parents', () => {
+  const messages = [
+    message(1, { isOutgoing: true }),
+    message(2, { replyToMessageId: 1 }),
+    message(3, { replyToMessageId: 4 }),
+    message(4, { isOutgoing: true }),
+    message(5, { isOutgoing: true }),
+    message(6, { replyToMessageId: 5 }),
+  ];
+
+  assert.deepEqual(
+    filterTelegramMessagesForViewWithMarkers(messages, 'chat-1', 'unread', { read: {}, starred: {} }).map((item) => item.id),
+    [1, 2, 4, 3, 5, 6],
+  );
+});
+
 test('isTelegramMessageUnreadForMissionControl treats read and starred messages as handled', () => {
   assert.equal(isTelegramMessageUnreadForMissionControl(message(1), { isRead: false, isStarred: false }), true);
   assert.equal(isTelegramMessageUnreadForMissionControl(message(2), { isRead: true, isStarred: false }), false);

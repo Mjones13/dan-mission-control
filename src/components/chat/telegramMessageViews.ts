@@ -22,10 +22,18 @@ export function filterTelegramMessagesForView(
 ): TelegramMessage[] {
   if (filter === 'all') return messages;
 
-  return messages.filter((message) => {
-    const markerState = getMarkerState(message.id);
-    if (filter === 'starred') return isTelegramMessageStarredForView(markerState);
-    return isTelegramMessageUnreadForMissionControl(message, markerState);
+  if (filter === 'starred') {
+    return messages.filter((message) => isTelegramMessageStarredForView(getMarkerState(message.id)));
+  }
+
+  const loadedMessagesById = new Map(messages.map((message) => [message.id, message]));
+  const unreadMessages = messages.filter((message) => isTelegramMessageUnreadForMissionControl(message, getMarkerState(message.id)));
+
+  return unreadMessages.flatMap((message) => {
+    const replyParent = message.replyToMessageId === null ? null : loadedMessagesById.get(message.replyToMessageId) || null;
+    if (!replyParent?.isOutgoing) return [message];
+
+    return [replyParent, message];
   });
 }
 

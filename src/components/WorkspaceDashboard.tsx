@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, ArrowRight, Folder, Users, CheckSquare, Trash2, AlertTriangle, Activity } from 'lucide-react';
+import { Plus, ArrowRight, Folder, Users, CheckSquare, Trash2, AlertTriangle, Activity, MessageSquare } from 'lucide-react';
 import Link from 'next/link';
 import { isProductAutopilotEnabled } from '@/lib/config';
 import type { WorkspaceStats } from '@/lib/types';
@@ -75,6 +75,13 @@ export function WorkspaceDashboard() {
                 <Plus className="w-4 h-4" />
                 New Workspace
               </button>
+              <Link
+                href="/chat-inbox"
+                className="min-h-11 px-4 rounded-lg border border-mc-border bg-mc-bg text-mc-text-secondary hover:text-mc-text hover:bg-mc-bg-tertiary flex items-center gap-2 text-sm"
+              >
+                <MessageSquare className="w-4 h-4" />
+                Chat Inbox
+              </Link>
             </div>
           </div>
         </div>

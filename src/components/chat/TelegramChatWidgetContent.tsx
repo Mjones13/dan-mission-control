@@ -10,14 +10,17 @@ import { playTelegramSentSound, primeTelegramSentSound } from '@/lib/audio/teleg
 import { canStartTelegramSend, recoverFailedTelegramDraft, shouldSendTelegramComposerFromKeyDown, telegramSendButtonClassName } from './telegramComposerSendState';
 import { useTelegramReplyContext } from './useTelegramReplyContext';
 import { TelegramMessageBubble, TelegramReplyContextModal } from './TelegramReplyContextViews';
+import { filterTelegramMessagesForView, type TelegramMessageViewFilter } from './telegramMessageViews';
 
 interface TelegramChatWidgetContentProps {
   isExpanded: boolean;
+  activeMessageFilter: TelegramMessageViewFilter;
+  onMessageFilterChange(filter: TelegramMessageViewFilter): void;
 }
 
 const CHAT_FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif';
 
-export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetContentProps) {
+export function TelegramChatWidgetContent({ isExpanded, activeMessageFilter, onMessageFilterChange }: TelegramChatWidgetContentProps) {
   const {
     chats,
     selectedChat,
@@ -37,7 +40,7 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
   } = useTelegramChatInbox();
   const [composerText, setComposerText] = useState('');
   const [replyingTo, setReplyingTo] = useState<TelegramMessage | null>(null);
-  const { getMarkerState, markReadMarker, markReplyParentsRead, cycleMarker } = useTelegramAgentReadMarkers();
+  const { getMarkerState, markReadMarker, markReadAndStarredMarker, markReplyParentsRead, cycleMarker } = useTelegramAgentReadMarkers();
   const replyContext = useTelegramReplyContext({ chatId: selectedChat?.id || null, messages });
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(true);
@@ -46,7 +49,11 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
   const trimmedComposerText = composerText.trim();
   const composerChunks = splitTelegramMessageText(trimmedComposerText);
   const composerChunkCount = composerChunks.length;
-  const renderedMessages = useMemo(() => visibleTelegramMessages(messages), [messages]);
+  const visibleMessages = useMemo(() => visibleTelegramMessages(messages), [messages]);
+  const renderedMessages = useMemo(() => {
+    if (!selectedChat) return visibleMessages;
+    return filterTelegramMessagesForView(visibleMessages, activeMessageFilter, (messageId) => getMarkerState(selectedChat.id, messageId));
+  }, [activeMessageFilter, getMarkerState, selectedChat, visibleMessages]);
 
   useEffect(() => {
     const nextChatId = selectedChat?.id || null;
@@ -55,10 +62,11 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
       shouldScrollToBottomRef.current = !selectedCacheEntry?.messages.length;
       isNearBottomRef.current = true;
       setReplyingTo(null);
+      onMessageFilterChange('all');
       replyContext.closeThread();
     }
     previousChatIdRef.current = nextChatId;
-  }, [replyContext, selectedCacheEntry?.messages.length, selectedChat?.id]);
+  }, [onMessageFilterChange, replyContext, selectedCacheEntry?.messages.length, selectedChat?.id]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -136,6 +144,34 @@ export function TelegramChatWidgetContent({ isExpanded }: TelegramChatWidgetCont
   };
 
   const renderMessageMarkerButton = (chatId: string, messageId: number) => {
+    if (activeMessageFilter === 'unread') {
+      const readLabel = 'Mark this message read locally';
+      const starLabel = 'Mark this message read and star for follow-up';
+
+      return (
+        <div className="flex items-center gap-1" aria-label="Unread message marker actions">
+          <button
+            type="button"
+            onClick={() => markReadMarker(chatId, messageId)}
+            aria-label={readLabel}
+            className="flex h-5 w-5 items-center justify-center rounded-full border border-mc-border text-transparent leading-none transition-colors hover:border-mc-accent hover:text-mc-accent"
+            title={readLabel}
+          >
+            ✓
+          </button>
+          <button
+            type="button"
+            onClick={() => markReadAndStarredMarker(chatId, messageId)}
+            aria-label={starLabel}
+            className="flex h-5 w-5 items-center justify-center rounded-full border border-mc-border bg-transparent text-xs leading-none text-[#9aa6b2] transition-colors hover:border-yellow-300 hover:text-yellow-300"
+            title={starLabel}
+          >
+            ☆
+          </button>
+        </div>
+      );
+    }
+
     const markerState = getMarkerState(chatId, messageId);
     const markerLabel = markerState.displayState === 'starred'
       ? 'Clear local read and follow-up markers'

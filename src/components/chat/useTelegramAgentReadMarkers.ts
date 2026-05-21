@@ -138,6 +138,18 @@ export function markTelegramAgentMessageStarred(
   return { ...markers, starred };
 }
 
+export function markTelegramAgentMessageReadAndStarred(
+  markers: TelegramAgentMessageMarkers,
+  chatId: string,
+  messageId: number,
+): TelegramAgentMessageMarkers {
+  return markTelegramAgentMessageStarred(
+    markTelegramAgentMessageRead(markers, chatId, messageId),
+    chatId,
+    messageId,
+  );
+}
+
 export function unmarkTelegramAgentMessageRead(
   markers: TelegramAgentMessageMarkers,
   chatId: string,
@@ -263,6 +275,10 @@ export function useTelegramAgentReadMarkers() {
     updateMarkers((current) => markTelegramAgentMessageRead(current, chatId, messageId));
   }, [updateMarkers]);
 
+  const markReadAndStarredMarker = useCallback((chatId: string, messageId: number) => {
+    updateMarkers((current) => markTelegramAgentMessageReadAndStarred(current, chatId, messageId));
+  }, [updateMarkers]);
+
   const markReplyParentsRead = useCallback((chatId: string, messages: TelegramMessage[]) => {
     const parentIds = replyParentReadMarkerIds(messages);
     updateMarkers((current) => markTelegramAgentMessagesRead(current, chatId, parentIds));
@@ -281,6 +297,7 @@ export function useTelegramAgentReadMarkers() {
     isMarkedRead,
     isStarred,
     markReadMarker,
+    markReadAndStarredMarker,
     markReplyParentsRead,
     cycleMarker,
     clearMarkers,
