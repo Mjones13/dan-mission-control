@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { Loader, X } from 'lucide-react';
+import { ChevronDown, Loader, X } from 'lucide-react';
 import { LinkifiedText } from './LinkifiedText';
 import type { TelegramMessage } from './useTelegramChatInbox';
 import { telegramDisplaySenderLabel, type TelegramReplyContextMessage } from './telegramReplyContext';
@@ -47,6 +47,9 @@ interface MessageBubbleProps {
   onReply(message: TelegramMessage): void;
   onOpenThread?(message: TelegramMessage): void;
   canOpenThread?: boolean;
+  childReplyJumpLabel?: string;
+  onJumpToChildReply?(message: TelegramMessage): void;
+  highlighted?: boolean;
   chatTitle?: string;
 }
 
@@ -61,17 +64,32 @@ export function TelegramMessageBubble({
   onReply,
   onOpenThread,
   canOpenThread = false,
+  childReplyJumpLabel,
+  onJumpToChildReply,
+  highlighted = false,
   chatTitle,
 }: MessageBubbleProps) {
   const senderLabel = telegramDisplaySenderLabel(message, chatTitle);
 
   return (
     <div className={message.isOutgoing ? (compact ? 'ml-6' : 'ml-8') : (compact ? 'mr-6' : 'mr-8')}>
-      <div className={`rounded-lg border ${compact ? 'px-3 py-2.5' : 'px-3.5 py-2.5'} ${message.isOutgoing ? 'border-[#4f9ce8]/25 bg-[#234b73]' : 'border-[#314154] bg-[#17212f]'}`}>
+      <div className={`rounded-lg border transition-colors ${compact ? 'px-3 py-2.5' : 'px-3.5 py-2.5'} ${highlighted ? 'border-yellow-300 bg-yellow-300/20 shadow-[0_0_0_1px_rgba(253,224,71,0.35),0_0_18px_rgba(253,224,71,0.18)]' : message.isOutgoing ? 'border-[#4f9ce8]/25 bg-[#234b73]' : 'border-[#314154] bg-[#17212f]'}`}>
         <div className="mb-2 flex items-center gap-3 text-[10px] text-[#aab3bd]">
           {senderLabel && <span>{senderLabel}</span>}
           {message.isOutgoing && message.reactionCount > 0 && <span className="text-[#c6d0dc]">✓ ack</span>}
           <span className="flex-1" />
+          {onJumpToChildReply && childReplyJumpLabel && (
+            <button
+              type="button"
+              onClick={() => onJumpToChildReply(message)}
+              className="inline-flex items-center gap-0.5 hover:text-mc-accent"
+              aria-label={childReplyJumpLabel}
+              title={childReplyJumpLabel}
+            >
+              <ChevronDown className="h-3 w-3" />
+              Newer
+            </button>
+          )}
           <button onClick={() => onReply(message)} className="hover:text-mc-accent">Reply</button>
           <span className="text-[#91a0af]">{formatTime(message.sentAt)}</span>
         </div>
