@@ -1,4 +1,3 @@
-import { Api } from 'telegram';
 import type { TelegramClient } from 'telegram';
 import type bigInt from 'big-integer';
 import { withTelegramClient } from './client-manager';
@@ -15,6 +14,9 @@ export interface TelegramTextMessage {
   sentAt: string;
   replyToMessageId: number | null;
   editedAt: string | null;
+  hasMedia?: boolean;
+  mediaKind?: string | null;
+  hasEntities?: boolean;
 }
 
 export interface TelegramResolvedTextMessage {
@@ -23,26 +25,143 @@ export interface TelegramResolvedTextMessage {
   unavailableReason?: 'missing' | 'non_text';
 }
 
-function bigIntToString(value: bigInt.BigInteger | undefined): string | null {
-  return value ? value.toString() : null;
+type TelegramMessageEnvelope = {
+  id: number;
+  className?: string;
+  message?: unknown;
+  date?: unknown;
+  editDate?: unknown;
+  senderId?: unknown;
+  out?: unknown;
+  reactions?: unknown;
+  replyTo?: unknown;
+  media?: unknown;
+  entities?: unknown;
+  action?: unknown;
+};
+
+const UNSUPPORTED_TELEGRAM_MEDIA_TEXT = '[Unsupported Telegram media]';
+const UNSUPPORTED_TELEGRAM_MESSAGE_TEXT = '[Unsupported Telegram message]';
+
+function bigIntToString(value: bigInt.BigInteger | bigint | number | string | undefined): string | null {
+  return value === undefined || value === null ? null : value.toString();
 }
 
-function messageToTextMessage(message: Api.Message, chatId: string): TelegramTextMessage | null {
-  if (!message.message) return null;
-  const reactionCount = message.reactions?.results?.reduce((sum, reaction) => sum + reaction.count, 0) || 0;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object');
+}
+
+function safeClassName(value: unknown): string | null {
+  if (!isRecord(value)) return null;
+  const className = value.className;
+  if (typeof className === 'string') return className;
+  const constructorValue = value.constructor;
+  if (!isRecord(constructorValue)) return null;
+  const constructorName = constructorValue.name;
+  return typeof constructorName === 'string' ? constructorName : null;
+}
+
+function safeKind(value: unknown): string | null {
+  const name = safeClassName(value);
+  if (!name) return null;
+  const trimmed = name.replace(/^Api\./, '').slice(0, 80);
+  return /^[A-Za-z0-9_.-]+$/.test(trimmed) ? trimmed : null;
+}
+
+function hasArrayItems(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0;
+}
+
+function reactionCountFromEnvelope(reactions: unknown): number {
+  if (!isRecord(reactions) || !Array.isArray(reactions.results)) return 0;
+  return reactions.results.reduce((sum, reaction) => {
+    if (!isRecord(reaction) || typeof reaction.count !== 'number' || !Number.isFinite(reaction.count)) return sum;
+    return sum + reaction.count;
+  }, 0);
+}
+
+function replyToMessageIdFromEnvelope(replyTo: unknown): number | null {
+  if (!isRecord(replyTo)) return null;
+  return Number.isInteger(replyTo.replyToMsgId) ? replyTo.replyToMsgId as number : null;
+}
+
+function envelopeClassLooksLikeUserMessage(value: Record<string, unknown>): boolean {
+  const className = typeof value.className === 'string' ? value.className : null;
+  const constructorName = safeClassName(value);
+  return (
+    className === 'Message' ||
+    className === 'Api.Message' ||
+    Boolean(className?.endsWith('.Message')) ||
+    constructorName === 'Message' ||
+    constructorName === 'VirtualClass'
+  );
+}
+
+export function isTelegramMessageEnvelope(value: unknown): value is TelegramMessageEnvelope {
+  if (!isRecord(value)) return false;
+  if (!Number.isInteger(value.id)) return false;
+
+  const className = typeof value.className === 'string' ? value.className : '';
+  if (/Message(?:Service|Empty)$/i.test(className) || className === 'MessageService' || className === 'MessageEmpty') return false;
+  if ('action' in value && value.action !== undefined && value.action !== null) return false;
+  if (!envelopeClassLooksLikeUserMessage(value)) return false;
+
+  const hasTextOrCaptionField = typeof value.message === 'string';
+  const hasMedia = Boolean(value.media);
+  const hasEntities = hasArrayItems(value.entities);
+  return hasTextOrCaptionField || hasMedia || hasEntities;
+}
+
+export function normalizeTelegramMessageEnvelope(value: unknown, chatId: string): TelegramTextMessage | null {
+  if (!isTelegramMessageEnvelope(value)) return null;
+
+  const textOrCaption = typeof value.message === 'string' ? value.message : '';
+  const hasMedia = Boolean(value.media);
+  const hasEntities = hasArrayItems(value.entities);
+  const text = textOrCaption || (hasMedia ? UNSUPPORTED_TELEGRAM_MEDIA_TEXT : hasEntities ? UNSUPPORTED_TELEGRAM_MESSAGE_TEXT : '');
+  if (!text) return null;
+
+  const date = typeof value.date === 'number' && Number.isFinite(value.date) ? value.date : 0;
+  const editDate = typeof value.editDate === 'number' && Number.isFinite(value.editDate) ? value.editDate : null;
 
   return {
-    id: message.id,
+    id: value.id,
     chatId,
-    text: message.message,
-    senderId: bigIntToString(message.senderId as bigInt.BigInteger | undefined),
+    text,
+    senderId: bigIntToString(value.senderId as bigInt.BigInteger | bigint | number | string | undefined),
     senderName: null,
-    isOutgoing: Boolean(message.out),
-    reactionCount,
-    sentAt: new Date(message.date * 1000).toISOString(),
-    replyToMessageId: message.replyTo?.replyToMsgId || null,
-    editedAt: message.editDate ? new Date(message.editDate * 1000).toISOString() : null,
+    isOutgoing: Boolean(value.out),
+    reactionCount: reactionCountFromEnvelope(value.reactions),
+    sentAt: new Date(date * 1000).toISOString(),
+    replyToMessageId: replyToMessageIdFromEnvelope(value.replyTo),
+    editedAt: editDate ? new Date(editDate * 1000).toISOString() : null,
+    ...(hasMedia ? { hasMedia: true, mediaKind: safeKind(value.media) } : {}),
+    ...(hasEntities ? { hasEntities: true } : {}),
   };
+}
+
+export function normalizeTelegramMessageEnvelopeList(items: readonly unknown[], chatId: string): TelegramTextMessage[] {
+  const normalized: TelegramTextMessage[] = [];
+  items.forEach((item) => {
+    const message = normalizeTelegramMessageEnvelope(item, chatId);
+    if (message) normalized.push(message);
+  });
+  return normalized;
+}
+
+export function resolveTelegramMessageEnvelopes(chatId: string, ids: number[], items: readonly unknown[]): TelegramResolvedTextMessage[] {
+  const byId = new Map<number, TelegramResolvedTextMessage>();
+
+  items.forEach((item) => {
+    if (!isRecord(item) || !Number.isInteger(item.id)) return;
+    const id = item.id as number;
+    const normalized = normalizeTelegramMessageEnvelope(item, chatId);
+    byId.set(id, normalized
+      ? { id, message: normalized }
+      : { id, message: null, unavailableReason: 'non_text' });
+  });
+
+  return ids.map((id) => byId.get(id) || { id, message: null, unavailableReason: 'missing' });
 }
 
 async function findAuthorizedGroupDialog(client: TelegramClient, chatId: string): Promise<TelegramDialog> {
@@ -81,10 +200,7 @@ export async function listTelegramGroupChatMessages(chatId: string, options: Lis
             offsetId: beforeMessageId || 0,
           });
 
-      const textMessages = messages
-        .filter((message): message is Api.Message => message instanceof Api.Message)
-        .map((message) => messageToTextMessage(message, chatId))
-        .filter((message): message is TelegramTextMessage => message !== null);
+      const textMessages = normalizeTelegramMessageEnvelopeList(messages, chatId);
 
       return afterMessageId ? textMessages : textMessages.reverse();
     },
@@ -100,17 +216,7 @@ export async function resolveTelegramGroupChatMessages(chatId: string, ids: numb
     async (client) => {
       const dialog = await findAuthorizedGroupDialog(client, chatId);
       const messages = await client.getMessages(dialog.inputEntity, { ids: uniqueIds });
-      const byId = new Map<number, TelegramResolvedTextMessage>();
-
-      for (const item of messages) {
-        if (!(item instanceof Api.Message)) continue;
-        const normalized = messageToTextMessage(item, chatId);
-        byId.set(item.id, normalized
-          ? { id: item.id, message: normalized }
-          : { id: item.id, message: null, unavailableReason: 'non_text' });
-      }
-
-      return uniqueIds.map((id) => byId.get(id) || { id, message: null, unavailableReason: 'missing' });
+      return resolveTelegramMessageEnvelopes(chatId, uniqueIds, messages);
     },
   );
 }
@@ -147,7 +253,7 @@ export async function sendTelegramGroupChatMessage(chatId: string, text: string,
         linkPreview: false,
       });
 
-      const normalized = messageToTextMessage(sent, chatId);
+      const normalized = normalizeTelegramMessageEnvelope(sent, chatId);
       if (!normalized) {
         throw new Error('TELEGRAM_SEND_RESULT_UNREADABLE');
       }
