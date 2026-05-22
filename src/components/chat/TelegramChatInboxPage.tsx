@@ -394,24 +394,21 @@ export function TelegramChatInboxPage() {
 
   return (
     <main className="min-h-screen bg-mc-bg p-2 text-[#f5f7fb] md:p-4" style={{ fontFamily: CHAT_FONT_FAMILY }}>
+      <Link
+        href="/"
+        aria-label="Back to Mission Control home"
+        title="Back to Mission Control home"
+        className="fixed left-4 top-4 z-50 flex items-center rounded-lg px-2 py-1 text-mc-text transition-colors hover:bg-mc-bg-tertiary"
+      >
+        <span className="text-2xl leading-none" aria-hidden="true">🦞</span>
+      </Link>
+
       <div className="mx-auto flex h-[calc(100vh-1rem)] max-w-[88rem] flex-col overflow-hidden rounded-2xl border border-mc-border bg-mc-bg-secondary shadow-2xl shadow-black/30 md:h-[calc(100vh-2rem)]">
         {error && (
           <div className="border-b border-red-500/20 bg-red-500/10 px-4 py-2 text-xs text-red-300">
             {error}
           </div>
         )}
-
-        <div className="flex items-center border-b border-mc-border bg-mc-bg-secondary px-3 py-2">
-          <Link
-            href="/"
-            aria-label="Back to Mission Control home"
-            title="Back to Mission Control home"
-            className="flex items-center gap-3 rounded-lg px-2 py-1 text-mc-text transition-colors hover:bg-mc-bg-tertiary"
-          >
-            <span className="text-2xl leading-none" aria-hidden="true">🦞</span>
-            <span className="text-sm font-semibold uppercase tracking-wider">Mission Control</span>
-          </Link>
-        </div>
 
         <div className="flex min-h-0 flex-1">
           <aside className={`${selectedChatId ? 'hidden md:flex' : 'flex'} w-full flex-col border-r border-mc-border md:w-[240px]`}>
