@@ -645,7 +645,7 @@ export function TelegramChatInboxPage() {
             ) : (
               <div className="flex-1 overflow-y-auto">
                 {chatPriorityGroups.priorityChats.map(renderChatRow)}
-                {showChatPrioritySeparator && <div className="my-1 border-t border-gray-500/70" aria-hidden="true" />}
+                {showChatPrioritySeparator && <div className="h-2 border-t border-mc-border/50 bg-gray-500/20" aria-hidden="true" />}
                 {chatPriorityGroups.otherChats.map(renderChatRow)}
               </div>
             )}
