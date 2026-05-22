@@ -70,14 +70,14 @@ export function WorkspaceDashboard() {
               </Link>
               <button
                 onClick={() => setShowCreateModal(true)}
-                className="min-h-11 flex items-center gap-2 px-4 bg-mc-accent text-mc-bg rounded-lg font-medium hover:bg-mc-accent/90"
+                className="min-h-11 flex items-center gap-2 px-4 bg-mc-accent-green text-mc-bg rounded-lg font-medium hover:bg-mc-accent-green/90"
               >
                 <Plus className="w-4 h-4" />
                 New Workspace
               </button>
               <Link
                 href="/chat-inbox"
-                className="min-h-11 px-4 rounded-lg border border-mc-border bg-mc-bg text-mc-text-secondary hover:text-mc-text hover:bg-mc-bg-tertiary flex items-center gap-2 text-sm"
+                className="min-h-11 px-4 rounded-lg bg-mc-accent text-mc-bg hover:bg-mc-accent/90 flex items-center gap-2 text-sm font-medium"
               >
                 <MessageSquare className="w-4 h-4" />
                 Chat Inbox
