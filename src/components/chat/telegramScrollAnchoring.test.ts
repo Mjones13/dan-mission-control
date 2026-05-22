@@ -46,8 +46,17 @@ describe('telegramScrollAnchoring', () => {
     assert.equal(scrollTopForCenteredElement(200, 100, 400, 650, 80), 590);
   });
 
+  it('top-aligns tall manual jump targets near the pane start', () => {
+    assert.equal(scrollTopForCenteredElement(200, 100, 400, 650, 360), 738);
+  });
+
   it('clamps centered manual jump scrollTop at the top boundary', () => {
     assert.equal(scrollTopForCenteredElement(20, 100, 400, 140, 80), 0);
+  });
+
+  it('clamps top-aligned tall manual jump scrollTop at the top boundary', () => {
+    assert.equal(scrollTopForCenteredElement(20, 100, 400, 105, 360), 13);
+    assert.equal(scrollTopForCenteredElement(20, 100, 400, 90, 360), 0);
   });
 
   it('prioritizes older-message anchoring only for explicit load-older prepends', () => {

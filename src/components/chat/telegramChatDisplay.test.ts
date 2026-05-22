@@ -36,6 +36,15 @@ test('getTelegramChatEmoji falls back to title matches when chat ids are unavail
   assert.equal(getTelegramChatEmoji({ id: 'unknown-leo-id', title: 'Leo Fitness' }), '🦁');
 });
 
+test('getTelegramChatEmoji uses known agent icons for new Mission Control chat titles', () => {
+  assert.equal(getTelegramChatEmoji({ id: 'unknown-atlas-id', title: 'Atlas Work' }), '🌎');
+  assert.equal(getTelegramChatEmoji({ id: 'unknown-feynman-id', title: 'Feynman Notes' }), '📚');
+  assert.equal(getTelegramChatEmoji({ id: 'unknown-forge-id', title: 'Forge Work' }), '🏗️');
+  assert.equal(getTelegramChatEmoji({ id: 'unknown-marshal-id', title: 'Marshal Work' }), '🎖️');
+  assert.equal(getTelegramChatEmoji({ id: 'unknown-canary-id', title: 'Canary Work' }), '🐤');
+  assert.equal(getTelegramChatEmoji({ id: 'unknown-harbor-id', title: 'Harbor Work' }), '🛳️');
+});
+
 test('getTelegramChatEmoji uses the generic chat bubble for unknown chats', () => {
   assert.equal(getTelegramChatEmoji({ id: 'other', title: 'Other Group' }), '💬');
 });

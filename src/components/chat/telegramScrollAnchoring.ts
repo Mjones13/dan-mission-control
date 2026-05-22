@@ -33,6 +33,9 @@ export function scrollTopForPreservedBottom(scrollHeight: number, scrollBottom: 
   return scrollHeight - scrollBottom - clientHeight;
 }
 
+const TALL_TARGET_TOP_ALIGNMENT_THRESHOLD = 0.9;
+const TALL_TARGET_TOP_PADDING_PX = 12;
+
 export function scrollTopForCenteredElement(
   scrollTop: number,
   containerTop: number,
@@ -40,7 +43,11 @@ export function scrollTopForCenteredElement(
   targetTop: number,
   targetHeight: number,
 ): number {
-  return Math.max(0, scrollTop + targetTop - containerTop - ((containerHeight - targetHeight) / 2));
+  const targetOffset = targetHeight >= containerHeight * TALL_TARGET_TOP_ALIGNMENT_THRESHOLD
+    ? TALL_TARGET_TOP_PADDING_PX
+    : (containerHeight - targetHeight) / 2;
+
+  return Math.max(0, scrollTop + targetTop - containerTop - targetOffset);
 }
 
 export function restoredScrollTopForHeightDelta(beforeScrollTop: number, beforeScrollHeight: number, afterScrollHeight: number): number {

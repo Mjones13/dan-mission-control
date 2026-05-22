@@ -28,6 +28,17 @@ type ScrollSnapshot = {
   scrollTop: number;
 };
 
+type ManualReplyJumpGuard = {
+  chatId: string;
+  messageId: number;
+  targetScrollTop: number;
+  startedAt: number;
+};
+
+const MANUAL_REPLY_JUMP_TARGET_THRESHOLD_PX = 8;
+const MANUAL_REPLY_JUMP_MAX_MS = 1000;
+const MESSAGE_HIGHLIGHT_DURATION_MS = 2400;
+
 function getScrollSnapshot(el: HTMLDivElement): ScrollSnapshot {
   return { scrollTop: el.scrollTop };
 }
@@ -64,6 +75,9 @@ export function TelegramChatInboxPage() {
   const scrollStateRef = useRef<{ chatId: string | null; messageIds: number[] }>({ chatId: null, messageIds: [] });
   const preRenderScrollSnapshotRef = useRef<ScrollSnapshot | null>(null);
   const loadOlderAnchorPendingRef = useRef<{ chatId: string; scrollBottom: number } | null>(null);
+  const manualReplyJumpGuardRef = useRef<ManualReplyJumpGuard | null>(null);
+  const manualReplyJumpFrameRef = useRef<number | null>(null);
+  const manualReplyJumpTimeoutRef = useRef<number | null>(null);
   const [unseenNewMessageCount, setUnseenNewMessageCount] = useState(0);
   const previousChatIdRef = useRef<string | null>(null);
   const trimmedComposerText = composerText.trim();
@@ -79,7 +93,70 @@ export function TelegramChatInboxPage() {
   }, [activeMessageFilter, getMarkerState, selectedChatId, visibleMessages]);
   // Build reply-jump affordances from the rendered list, not the full cache, so
   // every child target is present in the DOM when jumpToMessage runs.
-  const directRepliesByParentId = useMemo(() => createLoadedDirectRepliesByParentId(renderedMessages), [renderedMessages]);
+  const directRepliesByParentId = useMemo(
+    () => createLoadedDirectRepliesByParentId(renderedMessages),
+    [renderedMessages],
+  );
+
+  function cancelManualReplyJumpChecks() {
+    if (manualReplyJumpFrameRef.current !== null) {
+      window.cancelAnimationFrame(manualReplyJumpFrameRef.current);
+      manualReplyJumpFrameRef.current = null;
+    }
+    if (manualReplyJumpTimeoutRef.current !== null) {
+      window.clearTimeout(manualReplyJumpTimeoutRef.current);
+      manualReplyJumpTimeoutRef.current = null;
+    }
+  }
+
+  function clearManualReplyJumpGuard() {
+    manualReplyJumpGuardRef.current = null;
+    cancelManualReplyJumpChecks();
+  }
+
+  function isManualReplyJumpComplete(guard: ManualReplyJumpGuard, el: HTMLDivElement) {
+    return (
+      Math.abs(el.scrollTop - guard.targetScrollTop) <= MANUAL_REPLY_JUMP_TARGET_THRESHOLD_PX ||
+      window.performance.now() - guard.startedAt >= MANUAL_REPLY_JUMP_MAX_MS
+    );
+  }
+
+  function trackManualReplyJump(scrollEl: HTMLDivElement, guard: ManualReplyJumpGuard) {
+    cancelManualReplyJumpChecks();
+    manualReplyJumpGuardRef.current = guard;
+
+    const check = () => {
+      const currentGuard = manualReplyJumpGuardRef.current;
+      if (
+        !currentGuard ||
+        currentGuard.chatId !== guard.chatId ||
+        currentGuard.messageId !== guard.messageId
+      ) {
+        manualReplyJumpFrameRef.current = null;
+        return;
+      }
+      if (isManualReplyJumpComplete(currentGuard, scrollEl)) {
+        clearManualReplyJumpGuard();
+        return;
+      }
+      manualReplyJumpFrameRef.current = window.requestAnimationFrame(check);
+    };
+
+    manualReplyJumpFrameRef.current = window.requestAnimationFrame(check);
+    manualReplyJumpTimeoutRef.current = window.setTimeout(() => {
+      const currentGuard = manualReplyJumpGuardRef.current;
+      if (
+        currentGuard?.chatId === guard.chatId &&
+        currentGuard.messageId === guard.messageId
+      ) {
+        clearManualReplyJumpGuard();
+      }
+    }, MANUAL_REPLY_JUMP_MAX_MS);
+  }
+
+  useEffect(() => {
+    return () => clearManualReplyJumpGuard();
+  }, []);
 
   useEffect(() => {
     const previousChatId = previousChatIdRef.current;
@@ -111,30 +188,58 @@ export function TelegramChatInboxPage() {
     const beforeSnapshot = preRenderScrollSnapshotRef.current;
     const wasNearBottom = isNearBottomRef.current;
 
-    if (chatChanged) {
-      if (selectedCacheEntry?.scrollTop !== undefined && currentMessageIds.length > 0) {
-        el.scrollTop = selectedCacheEntry.scrollTop;
-      } else {
+    const manualReplyJumpGuard = manualReplyJumpGuardRef.current;
+    const manualReplyJumpInProgress =
+      manualReplyJumpGuard?.chatId === selectedChatId &&
+      !isManualReplyJumpComplete(manualReplyJumpGuard, el);
+
+    if (manualReplyJumpInProgress) {
+      // Manual smooth reply jumps own scroll position briefly. Do not let normal
+      // chat-change/near-bottom/cache restoration snap over the in-flight jump.
+    } else {
+      if (manualReplyJumpGuard?.chatId === selectedChatId) {
+        clearManualReplyJumpGuard();
+      }
+
+      if (chatChanged) {
+        if (selectedCacheEntry?.scrollTop !== undefined && currentMessageIds.length > 0) {
+          el.scrollTop = selectedCacheEntry.scrollTop;
+        } else {
+          el.scrollTop = el.scrollHeight;
+        }
+        setUnseenNewMessageCount(0);
+      } else if (
+        shouldRestoreOlderMessageAnchor(
+          messageListChange,
+          loadOlderAnchorPendingRef.current?.chatId === selectedChatId,
+        ) && loadOlderAnchorPendingRef.current
+      ) {
+        el.scrollTop = scrollTopForPreservedBottom(
+          el.scrollHeight,
+          loadOlderAnchorPendingRef.current.scrollBottom,
+          el.clientHeight,
+        );
+        const newCount = appendedMessageCount(previousScrollState.messageIds, currentMessageIds);
+        if (newCount > 0) {
+          setUnseenNewMessageCount((count) => count + newCount);
+        }
+      } else if (shouldScrollToBottomRef.current || wasNearBottom) {
         el.scrollTop = el.scrollHeight;
+        setUnseenNewMessageCount(0);
+      } else if (
+        (messageListChange === 'append' ||
+          messageListChange === 'prepend' ||
+          messageListChange === 'mixed') &&
+        beforeSnapshot
+      ) {
+        el.scrollTop = beforeSnapshot.scrollTop;
+        const newCount = appendedMessageCount(previousScrollState.messageIds, currentMessageIds);
+        if (newCount > 0) {
+          setUnseenNewMessageCount((count) => count + newCount);
+        }
+      } else if (selectedCacheEntry?.scrollTop !== undefined) {
+        el.scrollTop = selectedCacheEntry.scrollTop;
       }
-      setUnseenNewMessageCount(0);
-    } else if (shouldRestoreOlderMessageAnchor(messageListChange, loadOlderAnchorPendingRef.current?.chatId === selectedChatId) && loadOlderAnchorPendingRef.current) {
-      el.scrollTop = scrollTopForPreservedBottom(el.scrollHeight, loadOlderAnchorPendingRef.current.scrollBottom, el.clientHeight);
-      const newCount = appendedMessageCount(previousScrollState.messageIds, currentMessageIds);
-      if (newCount > 0) {
-        setUnseenNewMessageCount((count) => count + newCount);
-      }
-    } else if (shouldScrollToBottomRef.current || wasNearBottom) {
-      el.scrollTop = el.scrollHeight;
-      setUnseenNewMessageCount(0);
-    } else if ((messageListChange === 'append' || messageListChange === 'prepend' || messageListChange === 'mixed') && beforeSnapshot) {
-      el.scrollTop = beforeSnapshot.scrollTop;
-      const newCount = appendedMessageCount(previousScrollState.messageIds, currentMessageIds);
-      if (newCount > 0) {
-        setUnseenNewMessageCount((count) => count + newCount);
-      }
-    } else if (selectedCacheEntry?.scrollTop !== undefined) {
-      el.scrollTop = selectedCacheEntry.scrollTop;
     }
 
     shouldScrollToBottomRef.current = false;
@@ -152,7 +257,7 @@ export function TelegramChatInboxPage() {
 
   useEffect(() => {
     if (highlightedMessageId === null) return;
-    const timeout = window.setTimeout(() => setHighlightedMessageId(null), 3600);
+    const timeout = window.setTimeout(() => setHighlightedMessageId(null), MESSAGE_HIGHLIGHT_DURATION_MS);
     return () => window.clearTimeout(timeout);
   }, [highlightedMessageId]);
 
@@ -192,8 +297,9 @@ export function TelegramChatInboxPage() {
 
   const jumpToMessage = (messageId: number) => {
     const scrollEl = scrollRef.current;
-    const targetEl = scrollEl?.querySelector<HTMLElement>(`[data-telegram-message-id="${messageId}"]`);
-    if (!scrollEl || !targetEl) return;
+    const selector = `[data-telegram-message-id="${messageId}"]`;
+    const targetEl = scrollEl?.querySelector<HTMLElement>(selector);
+    if (!scrollEl || !targetEl || !selectedChatId) return;
 
     // Manual jumps should not be overridden by the normal "near bottom" auto
     // scroll path on the next render; the short highlight makes the landing
@@ -201,8 +307,21 @@ export function TelegramChatInboxPage() {
     shouldScrollToBottomRef.current = false;
     const scrollRect = scrollEl.getBoundingClientRect();
     const targetRect = targetEl.getBoundingClientRect();
-    const targetScrollTop = scrollTopForCenteredElement(scrollEl.scrollTop, scrollRect.top, scrollEl.clientHeight, targetRect.top, targetRect.height);
-    scrollEl.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'smooth' });
+    const targetScrollTop = scrollTopForCenteredElement(
+      scrollEl.scrollTop,
+      scrollRect.top,
+      scrollEl.clientHeight,
+      targetRect.top,
+      targetRect.height,
+    );
+    const normalizedTargetScrollTop = Math.max(0, targetScrollTop);
+    trackManualReplyJump(scrollEl, {
+      chatId: selectedChatId,
+      messageId,
+      targetScrollTop: normalizedTargetScrollTop,
+      startedAt: window.performance.now(),
+    });
+    scrollEl.scrollTo({ top: normalizedTargetScrollTop, behavior: 'smooth' });
     setHighlightedMessageId(messageId);
     setOpenChildReplyMenuFor(null);
     window.setTimeout(() => {
@@ -398,7 +517,7 @@ export function TelegramChatInboxPage() {
         href="/"
         aria-label="Back to Mission Control home"
         title="Back to Mission Control home"
-        className="fixed left-4 top-4 z-50 flex items-center rounded-lg px-2 py-1 text-mc-text transition-colors hover:bg-mc-bg-tertiary"
+        className="fixed left-4 top-4 z-50 hidden items-center rounded-lg px-2 py-1 text-mc-text transition-colors hover:bg-mc-bg-tertiary 2xl:flex"
       >
         <span className="text-2xl leading-none" aria-hidden="true">🦞</span>
       </Link>
