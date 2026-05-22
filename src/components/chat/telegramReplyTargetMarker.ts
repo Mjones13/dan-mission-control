@@ -1,0 +1,22 @@
+import type { TelegramMessage } from './useTelegramChatInbox';
+import type { TelegramAgentMarkerState } from './useTelegramAgentReadMarkers';
+
+export function getActiveReplyTargetId(
+  replyingTo: TelegramMessage | null,
+  threadReplyTarget: TelegramMessage | null,
+): number | null {
+  return (replyingTo || threadReplyTarget)?.id ?? null;
+}
+
+export function shouldShowReplyTargetMarker(
+  messageId: number,
+  activeReplyTargetId: number | null,
+  markerDisplayState: TelegramAgentMarkerState['displayState'],
+  activeMessageFilter: 'all' | 'unread' | 'starred',
+): boolean {
+  return (
+    activeMessageFilter !== 'unread' &&
+    activeReplyTargetId === messageId &&
+    markerDisplayState === 'none'
+  );
+}

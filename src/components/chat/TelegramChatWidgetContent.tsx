@@ -12,6 +12,7 @@ import { useTelegramReplyContext } from './useTelegramReplyContext';
 import { TelegramMessageBubble, TelegramReplyContextModal } from './TelegramReplyContextViews';
 import { filterTelegramMessagesForView, type TelegramMessageViewFilter } from './telegramMessageViews';
 import { groupTelegramChatsByPriority, shouldRenderTelegramChatPrioritySeparator } from './telegramChatPriorityGroups';
+import { getActiveReplyTargetId, shouldShowReplyTargetMarker } from './telegramReplyTargetMarker';
 import {
   appendedActionableMessageCount,
   classifyMessageListChange,
@@ -81,6 +82,7 @@ export function TelegramChatWidgetContent({ isExpanded, activeMessageFilter, onM
   const trimmedComposerText = composerText.trim();
   const composerChunks = splitTelegramMessageText(trimmedComposerText);
   const composerChunkCount = composerChunks.length;
+  const activeReplyTargetId = getActiveReplyTargetId(replyingTo, replyContext.threadReplyTarget);
   const visibleMessages = useMemo(() => visibleTelegramMessages(messages), [messages]);
   const renderedMessages = useMemo(() => {
     if (!selectedChat) return visibleMessages;
@@ -337,6 +339,14 @@ export function TelegramChatWidgetContent({ isExpanded, activeMessageFilter, onM
   );
 
   const renderMessageMarkerButton = (chatId: string, messageId: number) => {
+    const markerState = getMarkerState(chatId, messageId);
+    const showReplyTargetMarker = shouldShowReplyTargetMarker(
+      messageId,
+      activeReplyTargetId,
+      markerState.displayState,
+      activeMessageFilter,
+    );
+
     if (activeMessageFilter === 'unread') {
       const readLabel = 'Mark this message read locally';
       const starLabel = 'Mark this message read and star for follow-up';
@@ -367,17 +377,21 @@ export function TelegramChatWidgetContent({ isExpanded, activeMessageFilter, onM
       );
     }
 
-    const markerState = getMarkerState(chatId, messageId);
     const markerLabel = markerState.displayState === 'starred'
       ? 'Clear local read and follow-up markers'
       : markerState.displayState === 'read'
         ? 'Star this message for follow-up'
         : 'Mark this message read locally';
+    const markerTitle = showReplyTargetMarker
+      ? 'Reply target · Mark this message read locally'
+      : markerLabel;
     const markerClassName = markerState.displayState === 'starred'
       ? 'border-yellow-300 bg-yellow-300 text-mc-bg shadow-[0_0_8px_rgba(253,224,71,0.35)] hover:border-yellow-200 hover:bg-yellow-200'
       : markerState.displayState === 'read'
         ? 'border-mc-accent bg-mc-accent text-mc-bg shadow-[0_0_8px_rgba(88,166,255,0.35)] hover:border-[#8ec5ff] hover:bg-[#8ec5ff]'
-        : 'border-mc-border text-transparent hover:border-mc-accent hover:text-mc-accent';
+        : showReplyTargetMarker
+          ? 'border-mc-accent/70 bg-mc-accent/10 text-mc-accent hover:border-mc-accent hover:bg-mc-accent/15'
+          : 'border-mc-border text-transparent hover:border-mc-accent hover:text-mc-accent';
 
     return (
       <button
@@ -385,9 +399,9 @@ export function TelegramChatWidgetContent({ isExpanded, activeMessageFilter, onM
         onClick={() => cycleMarker(chatId, messageId)}
         aria-label={markerLabel}
         className={`flex h-5 w-5 items-center justify-center rounded-full border text-xs leading-none transition-colors ${markerClassName}`}
-        title={markerLabel}
+        title={markerTitle}
       >
-        {markerState.displayState === 'starred' ? '★' : markerState.displayState === 'read' ? '✓' : ''}
+        {markerState.displayState === 'starred' ? '★' : markerState.displayState === 'read' ? '✓' : showReplyTargetMarker ? <span className="translate-y-px">↩</span> : ''}
       </button>
     );
   };
