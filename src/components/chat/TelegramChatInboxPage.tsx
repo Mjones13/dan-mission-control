@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type TouchEvent, type WheelEvent } from 'react';
 import { ChevronLeft, Loader, MessageSquare } from 'lucide-react';
 import Link from 'next/link';
 import { TELEGRAM_TEXT_MESSAGE_LIMIT, splitTelegramMessageText } from '@/lib/telegram/message-chunks';
 import { useTelegramChatInbox, type TelegramMessage } from './useTelegramChatInbox';
-import { getTelegramChatEmoji, visibleTelegramMessages } from './telegramChatDisplay';
+import { getTelegramChatEmoji, isTelegramBridgeStatusText, visibleTelegramMessages } from './telegramChatDisplay';
 import { useTelegramAgentReadMarkers } from './useTelegramAgentReadMarkers';
 import { playTelegramSentSound, primeTelegramSentSound } from '@/lib/audio/telegramSentSound';
 import { canStartTelegramSend, recoverFailedTelegramDraft, shouldSendTelegramComposerFromKeyDown, telegramSendButtonClassName } from './telegramComposerSendState';
@@ -15,9 +15,13 @@ import { createLoadedDirectRepliesByParentId, telegramDisplaySenderLabel } from 
 import { filterTelegramMessagesForView, type TelegramMessageViewFilter } from './telegramMessageViews';
 import { groupTelegramChatsByPriority, shouldRenderTelegramChatPrioritySeparator } from './telegramChatPriorityGroups';
 import {
-  appendedMessageCount,
+  appendedActionableMessageCount,
   classifyMessageListChange,
   getScrollBottom,
+  isUserScrollingAway,
+  isWithinBottomLockThreshold,
+  isWithinLooseNearBottomThreshold,
+  restoredScrollTopForHeightDelta,
   scrollTopForCenteredElement,
   scrollTopForPreservedBottom,
   shouldRestoreOlderMessageAnchor,
@@ -27,6 +31,7 @@ const CHAT_FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Seg
 
 type ScrollSnapshot = {
   scrollTop: number;
+  scrollHeight: number;
 };
 
 type ManualReplyJumpGuard = {
@@ -41,7 +46,11 @@ const MANUAL_REPLY_JUMP_MAX_MS = 1000;
 const MESSAGE_HIGHLIGHT_DURATION_MS = 2400;
 
 function getScrollSnapshot(el: HTMLDivElement): ScrollSnapshot {
-  return { scrollTop: el.scrollTop };
+  return { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight };
+}
+
+function isJumpToLatestActionableMessage(message: TelegramMessage): boolean {
+  return !isTelegramBridgeStatusText(message.text);
 }
 
 export function TelegramChatInboxPage() {
@@ -72,7 +81,10 @@ export function TelegramChatInboxPage() {
   const replyContext = useTelegramReplyContext({ chatId: selectedChatId, messages });
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(true);
+  const bottomLockRef = useRef(true);
   const isNearBottomRef = useRef(true);
+  const lastKnownScrollTopRef = useRef(0);
+  const touchStartYRef = useRef<number | null>(null);
   const scrollStateRef = useRef<{ chatId: string | null; messageIds: number[] }>({ chatId: null, messageIds: [] });
   const preRenderScrollSnapshotRef = useRef<ScrollSnapshot | null>(null);
   const loadOlderAnchorPendingRef = useRef<{ chatId: string; scrollBottom: number } | null>(null);
@@ -165,7 +177,9 @@ export function TelegramChatInboxPage() {
     const previousChatId = previousChatIdRef.current;
     if (selectedChatId && previousChatId !== selectedChatId) {
       shouldScrollToBottomRef.current = !selectedCacheEntry?.messages.length;
+      bottomLockRef.current = !selectedCacheEntry?.messages.length;
       isNearBottomRef.current = true;
+      lastKnownScrollTopRef.current = selectedCacheEntry?.scrollTop || 0;
       setReplyingTo(null);
       setActiveMessageFilter('all');
       setOpenChildReplyMenuFor(null);
@@ -189,7 +203,7 @@ export function TelegramChatInboxPage() {
       ? 'replace'
       : classifyMessageListChange(previousScrollState.messageIds, currentMessageIds);
     const beforeSnapshot = preRenderScrollSnapshotRef.current;
-    const wasNearBottom = isNearBottomRef.current;
+    const wasBottomLocked = bottomLockRef.current;
 
     const manualReplyJumpGuard = manualReplyJumpGuardRef.current;
     const manualReplyJumpInProgress =
@@ -207,9 +221,12 @@ export function TelegramChatInboxPage() {
       if (chatChanged) {
         if (selectedCacheEntry?.scrollTop !== undefined && currentMessageIds.length > 0) {
           el.scrollTop = selectedCacheEntry.scrollTop;
+          bottomLockRef.current = isWithinBottomLockThreshold(getScrollBottom(el.scrollHeight, el.scrollTop, el.clientHeight));
         } else {
           el.scrollTop = el.scrollHeight;
+          bottomLockRef.current = true;
         }
+        isNearBottomRef.current = isWithinLooseNearBottomThreshold(getScrollBottom(el.scrollHeight, el.scrollTop, el.clientHeight));
         setUnseenNewMessageCount(0);
       } else if (
         shouldRestoreOlderMessageAnchor(
@@ -222,12 +239,20 @@ export function TelegramChatInboxPage() {
           loadOlderAnchorPendingRef.current.scrollBottom,
           el.clientHeight,
         );
-        const newCount = appendedMessageCount(previousScrollState.messageIds, currentMessageIds);
+        bottomLockRef.current = false;
+        isNearBottomRef.current = isWithinLooseNearBottomThreshold(getScrollBottom(el.scrollHeight, el.scrollTop, el.clientHeight));
+        const newCount = appendedActionableMessageCount(
+          previousScrollState.messageIds,
+          renderedMessages,
+          isJumpToLatestActionableMessage,
+        );
         if (newCount > 0) {
           setUnseenNewMessageCount((count) => count + newCount);
         }
-      } else if (shouldScrollToBottomRef.current || wasNearBottom) {
+      } else if (shouldScrollToBottomRef.current || wasBottomLocked) {
         el.scrollTop = el.scrollHeight;
+        bottomLockRef.current = true;
+        isNearBottomRef.current = true;
         setUnseenNewMessageCount(0);
       } else if (
         (messageListChange === 'append' ||
@@ -236,10 +261,20 @@ export function TelegramChatInboxPage() {
         beforeSnapshot
       ) {
         el.scrollTop = beforeSnapshot.scrollTop;
-        const newCount = appendedMessageCount(previousScrollState.messageIds, currentMessageIds);
+        const newCount = appendedActionableMessageCount(
+          previousScrollState.messageIds,
+          renderedMessages,
+          isJumpToLatestActionableMessage,
+        );
         if (newCount > 0) {
           setUnseenNewMessageCount((count) => count + newCount);
         }
+      } else if (messageListChange === 'same' && beforeSnapshot) {
+        el.scrollTop = restoredScrollTopForHeightDelta(
+          beforeSnapshot.scrollTop,
+          beforeSnapshot.scrollHeight,
+          el.scrollHeight,
+        );
       } else if (selectedCacheEntry?.scrollTop !== undefined) {
         el.scrollTop = selectedCacheEntry.scrollTop;
       }
@@ -249,6 +284,7 @@ export function TelegramChatInboxPage() {
     preRenderScrollSnapshotRef.current = null;
     loadOlderAnchorPendingRef.current = null;
     scrollStateRef.current = { chatId: selectedChatId, messageIds: currentMessageIds };
+    lastKnownScrollTopRef.current = el.scrollTop;
     if (selectedCacheEntry?.scrollTop !== el.scrollTop) {
       setChatScrollTop(selectedChatId, el.scrollTop);
     }
@@ -278,12 +314,39 @@ export function TelegramChatInboxPage() {
   const handleThreadScroll = () => {
     const el = scrollRef.current;
     if (!el || !selectedChatId) return;
+    if (isUserScrollingAway(lastKnownScrollTopRef.current, el.scrollTop)) {
+      bottomLockRef.current = false;
+    }
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    isNearBottomRef.current = distanceFromBottom < 80;
-    if (isNearBottomRef.current) {
+    isNearBottomRef.current = isWithinLooseNearBottomThreshold(distanceFromBottom);
+    if (isWithinBottomLockThreshold(distanceFromBottom)) {
+      bottomLockRef.current = true;
       setUnseenNewMessageCount(0);
     }
+    lastKnownScrollTopRef.current = el.scrollTop;
     setChatScrollTop(selectedChatId, el.scrollTop);
+  };
+
+  const disengageBottomLock = () => {
+    bottomLockRef.current = false;
+    shouldScrollToBottomRef.current = false;
+  };
+
+  const handleThreadWheel = (event: WheelEvent<HTMLDivElement>) => {
+    if (event.deltaY < 0) disengageBottomLock();
+  };
+
+  const handleThreadTouchStart = (event: TouchEvent<HTMLDivElement>) => {
+    touchStartYRef.current = event.touches[0]?.clientY ?? null;
+  };
+
+  const handleThreadTouchMove = (event: TouchEvent<HTMLDivElement>) => {
+    const previousY = touchStartYRef.current;
+    const nextY = event.touches[0]?.clientY ?? null;
+    if (previousY !== null && nextY !== null && nextY > previousY + 1) {
+      disengageBottomLock();
+    }
+    touchStartYRef.current = nextY;
   };
 
   const handleLoadOlderMessages = async () => {
@@ -295,6 +358,7 @@ export function TelegramChatInboxPage() {
       };
     }
     shouldScrollToBottomRef.current = false;
+    bottomLockRef.current = false;
     await loadOlderMessages();
   };
 
@@ -308,6 +372,7 @@ export function TelegramChatInboxPage() {
     // scroll path on the next render; the short highlight makes the landing
     // point visible after smooth scrolling.
     shouldScrollToBottomRef.current = false;
+    bottomLockRef.current = false;
     const scrollRect = scrollEl.getBoundingClientRect();
     const targetRect = targetEl.getBoundingClientRect();
     const targetScrollTop = scrollTopForCenteredElement(
@@ -329,7 +394,8 @@ export function TelegramChatInboxPage() {
     setOpenChildReplyMenuFor(null);
     window.setTimeout(() => {
       const distanceFromBottom = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight;
-      isNearBottomRef.current = distanceFromBottom < 80;
+      isNearBottomRef.current = isWithinLooseNearBottomThreshold(distanceFromBottom);
+      bottomLockRef.current = isWithinBottomLockThreshold(distanceFromBottom);
       if (selectedChatId) setChatScrollTop(selectedChatId, scrollEl.scrollTop);
     }, 0);
   };
@@ -337,6 +403,7 @@ export function TelegramChatInboxPage() {
   const jumpToLatestMessages = () => {
     const el = scrollRef.current;
     shouldScrollToBottomRef.current = true;
+    bottomLockRef.current = true;
     isNearBottomRef.current = true;
     setUnseenNewMessageCount(0);
     if (el) {
@@ -359,12 +426,15 @@ export function TelegramChatInboxPage() {
 
     primeTelegramSentSound();
     const attemptedText = composerText;
-    const followSentMessagesToBottom = isNearBottomRef.current;
+    const followSentMessagesToBottom = bottomLockRef.current;
     const replyParent = replyingTo || replyContext.threadReplyTarget;
     setComposerText('');
     const result = await sendMessage(attemptedText, replyParent);
     shouldScrollToBottomRef.current = followSentMessagesToBottom;
-    if (followSentMessagesToBottom) isNearBottomRef.current = true;
+    if (followSentMessagesToBottom) {
+      bottomLockRef.current = true;
+      isNearBottomRef.current = true;
+    }
     if (result.ok) {
       playTelegramSentSound();
       if (selectedChatId && replyParent && !replyParent.isOutgoing) {
@@ -615,7 +685,14 @@ export function TelegramChatInboxPage() {
                   </div>
                 </header>
                 <div className="relative min-h-0 flex-1">
-                  <div ref={scrollRef} onScroll={handleThreadScroll} className="h-full space-y-2.5 overflow-y-auto p-3">
+                  <div
+                    ref={scrollRef}
+                    onScroll={handleThreadScroll}
+                    onWheel={handleThreadWheel}
+                    onTouchStart={handleThreadTouchStart}
+                    onTouchMove={handleThreadTouchMove}
+                    className="h-full space-y-2.5 overflow-y-auto p-3"
+                  >
                     {hasOlderMessages && messages.length > 0 && (
                       <div className="flex justify-center">
                         <button
