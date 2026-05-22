@@ -11,6 +11,7 @@ import { canStartTelegramSend, recoverFailedTelegramDraft, shouldSendTelegramCom
 import { useTelegramReplyContext } from './useTelegramReplyContext';
 import { TelegramMessageBubble, TelegramReplyContextModal } from './TelegramReplyContextViews';
 import { filterTelegramMessagesForView, type TelegramMessageViewFilter } from './telegramMessageViews';
+import { groupTelegramChatsByPriority, shouldRenderTelegramChatPrioritySeparator } from './telegramChatPriorityGroups';
 
 interface TelegramChatWidgetContentProps {
   isExpanded: boolean;
@@ -57,6 +58,8 @@ export function TelegramChatWidgetContent({ isExpanded, activeMessageFilter, onM
     // mutations or background history queries.
     return filterTelegramMessagesForView(visibleMessages, activeMessageFilter, (messageId) => getMarkerState(selectedChat.id, messageId));
   }, [activeMessageFilter, getMarkerState, selectedChat, visibleMessages]);
+  const chatPriorityGroups = useMemo(() => groupTelegramChatsByPriority(chats), [chats]);
+  const showChatPrioritySeparator = shouldRenderTelegramChatPrioritySeparator(chatPriorityGroups);
 
   useEffect(() => {
     const nextChatId = selectedChat?.id || null;
@@ -146,6 +149,26 @@ export function TelegramChatWidgetContent({ isExpanded, activeMessageFilter, onM
     setReplyingTo(null);
   };
 
+  const renderChatRow = (chat: (typeof chats)[number]) => (
+    <button
+      key={chat.id}
+      onClick={() => selectChat(chat)}
+      className={`relative w-full border-b px-3 py-3 text-left transition-colors hover:bg-mc-bg-tertiary/50 ${selectedChat?.id === chat.id ? 'border-l-[14px] border-l-mc-accent border-b-mc-accent/60 bg-mc-accent/35 shadow-[inset_0_0_0_1px_rgba(88,166,255,0.38)]' : 'border-l-4 border-l-transparent border-b-mc-border/30'}`}
+    >
+      {selectedChat?.id === chat.id && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-mc-accent shadow-[0_0_8px_rgba(88,166,255,0.9)]" aria-label="Selected chat" />}
+      <div className="flex items-center gap-2 pr-3">
+        <span className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-base leading-none ${selectedChat?.id === chat.id ? 'bg-mc-accent/45 ring-2 ring-mc-accent/80' : 'bg-mc-bg-tertiary'}`}>
+          {getTelegramChatEmoji(chat)}
+        </span>
+        <span className={`min-w-0 flex-1 truncate text-sm font-semibold leading-snug ${selectedChat?.id === chat.id ? 'text-white' : 'text-[#eef2f7]'}`}>{chat.title}</span>
+        {chat.unreadCount > 0 && (
+          <span className="rounded-full bg-mc-accent px-1.5 text-[10px] font-bold text-mc-bg">{chat.unreadCount}</span>
+        )}
+      </div>
+      {chat.lastMessagePreview && <p className={`mt-1 truncate text-[10px] leading-tight ${selectedChat?.id === chat.id ? 'text-[#d7e3ef]' : 'text-[#9aa6b2]'}`}>{chat.lastMessagePreview}</p>}
+    </button>
+  );
+
   const renderMessageMarkerButton = (chatId: string, messageId: number) => {
     if (activeMessageFilter === 'unread') {
       const readLabel = 'Mark this message read locally';
@@ -210,25 +233,9 @@ export function TelegramChatWidgetContent({ isExpanded, activeMessageFilter, onM
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto">
-          {chats.map((chat) => (
-            <button
-              key={chat.id}
-              onClick={() => selectChat(chat)}
-              className={`relative w-full border-b px-3 py-3 text-left transition-colors hover:bg-mc-bg-tertiary/50 ${selectedChat?.id === chat.id ? 'border-l-[14px] border-l-mc-accent border-b-mc-accent/60 bg-mc-accent/35 shadow-[inset_0_0_0_1px_rgba(88,166,255,0.38)]' : 'border-l-4 border-l-transparent border-b-mc-border/30'}`}
-            >
-              {selectedChat?.id === chat.id && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-mc-accent shadow-[0_0_8px_rgba(88,166,255,0.9)]" aria-label="Selected chat" />}
-              <div className="flex items-center gap-2 pr-3">
-                <span className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-base leading-none ${selectedChat?.id === chat.id ? 'bg-mc-accent/45 ring-2 ring-mc-accent/80' : 'bg-mc-bg-tertiary'}`}>
-                  {getTelegramChatEmoji(chat)}
-                </span>
-                <span className={`min-w-0 flex-1 truncate text-sm font-semibold leading-snug ${selectedChat?.id === chat.id ? 'text-white' : 'text-[#eef2f7]'}`}>{chat.title}</span>
-                {chat.unreadCount > 0 && (
-                  <span className="rounded-full bg-mc-accent px-1.5 text-[10px] font-bold text-mc-bg">{chat.unreadCount}</span>
-                )}
-              </div>
-              {chat.lastMessagePreview && <p className={`mt-1 truncate text-[10px] leading-tight ${selectedChat?.id === chat.id ? 'text-[#d7e3ef]' : 'text-[#9aa6b2]'}`}>{chat.lastMessagePreview}</p>}
-            </button>
-          ))}
+          {chatPriorityGroups.priorityChats.map(renderChatRow)}
+          {showChatPrioritySeparator && <div className="my-1 border-t border-mc-border/50" aria-hidden="true" />}
+          {chatPriorityGroups.otherChats.map(renderChatRow)}
         </div>
       )}
     </div>

@@ -13,6 +13,7 @@ import { useTelegramReplyContext } from './useTelegramReplyContext';
 import { TelegramMessageBubble, TelegramReplyContextModal } from './TelegramReplyContextViews';
 import { createLoadedDirectRepliesByParentId, telegramDisplaySenderLabel } from './telegramReplyContext';
 import { filterTelegramMessagesForView, type TelegramMessageViewFilter } from './telegramMessageViews';
+import { groupTelegramChatsByPriority, shouldRenderTelegramChatPrioritySeparator } from './telegramChatPriorityGroups';
 import {
   appendedMessageCount,
   classifyMessageListChange,
@@ -97,6 +98,8 @@ export function TelegramChatInboxPage() {
     () => createLoadedDirectRepliesByParentId(renderedMessages),
     [renderedMessages],
   );
+  const chatPriorityGroups = useMemo(() => groupTelegramChatsByPriority(chats), [chats]);
+  const showChatPrioritySeparator = shouldRenderTelegramChatPrioritySeparator(chatPriorityGroups);
 
   function cancelManualReplyJumpChecks() {
     if (manualReplyJumpFrameRef.current !== null) {
@@ -511,6 +514,35 @@ export function TelegramChatInboxPage() {
     );
   };
 
+  const renderChatRow = (chat: (typeof chats)[number]) => (
+    <button
+      key={chat.id}
+      onClick={() => selectChat(chat)}
+      className={`relative flex w-full gap-3 border-b px-3 py-3.5 text-left transition-colors hover:bg-mc-bg-tertiary/50 ${selectedChatId === chat.id ? 'border-l-[14px] border-l-mc-accent border-b-mc-accent/60 bg-mc-accent/35 shadow-[inset_0_0_0_1px_rgba(88,166,255,0.38)]' : 'border-l-4 border-l-transparent border-b-mc-border/30'}`}
+    >
+      {selectedChatId === chat.id && <span className="absolute right-2 top-2 rounded-full bg-mc-accent px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-mc-bg">Active</span>}
+      <div className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xl leading-none ${selectedChatId === chat.id ? 'bg-mc-accent/45 text-mc-accent ring-2 ring-mc-accent/80' : 'bg-mc-bg-tertiary'}`}>
+        {getTelegramChatEmoji(chat)}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-2">
+          <span className={`truncate text-base font-semibold leading-snug ${selectedChatId === chat.id ? 'pr-14 text-white' : 'text-[#eef2f7]'}`}>{chat.title}</span>
+          {chat.unreadCount > 0 && (
+            <span className="flex h-[18px] min-w-[18px] flex-shrink-0 items-center justify-center rounded-full bg-mc-accent px-1 text-[10px] font-bold text-mc-bg">
+              {chat.unreadCount}
+            </span>
+          )}
+        </div>
+        {chat.lastMessagePreview && (
+          <p className={`mt-1 truncate text-[11px] leading-tight ${selectedChatId === chat.id ? 'text-[#d7e3ef]' : 'text-[#9aa6b2]'}`}>{chat.lastMessagePreview}</p>
+        )}
+        {chat.lastMessageAt && (
+          <p className={`mt-1 text-[10px] ${selectedChatId === chat.id ? 'text-[#b9c8d8]' : 'text-[#778391]'}`}>{new Date(chat.lastMessageAt).toLocaleString()}</p>
+        )}
+      </div>
+    </button>
+  );
+
   return (
     <main className="min-h-screen bg-mc-bg p-2 text-[#f5f7fb] md:p-4" style={{ fontFamily: CHAT_FONT_FAMILY }}>
       <Link
@@ -542,34 +574,9 @@ export function TelegramChatInboxPage() {
               </div>
             ) : (
               <div className="flex-1 overflow-y-auto">
-                {chats.map((chat) => (
-                  <button
-                    key={chat.id}
-                    onClick={() => selectChat(chat)}
-                    className={`relative flex w-full gap-3 border-b px-3 py-3.5 text-left transition-colors hover:bg-mc-bg-tertiary/50 ${selectedChatId === chat.id ? 'border-l-[14px] border-l-mc-accent border-b-mc-accent/60 bg-mc-accent/35 shadow-[inset_0_0_0_1px_rgba(88,166,255,0.38)]' : 'border-l-4 border-l-transparent border-b-mc-border/30'}`}
-                  >
-                    {selectedChatId === chat.id && <span className="absolute right-2 top-2 rounded-full bg-mc-accent px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-mc-bg">Active</span>}
-                    <div className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xl leading-none ${selectedChatId === chat.id ? 'bg-mc-accent/45 text-mc-accent ring-2 ring-mc-accent/80' : 'bg-mc-bg-tertiary'}`}>
-                      {getTelegramChatEmoji(chat)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className={`truncate text-base font-semibold leading-snug ${selectedChatId === chat.id ? 'pr-14 text-white' : 'text-[#eef2f7]'}`}>{chat.title}</span>
-                        {chat.unreadCount > 0 && (
-                          <span className="flex h-[18px] min-w-[18px] flex-shrink-0 items-center justify-center rounded-full bg-mc-accent px-1 text-[10px] font-bold text-mc-bg">
-                            {chat.unreadCount}
-                          </span>
-                        )}
-                      </div>
-                      {chat.lastMessagePreview && (
-                        <p className={`mt-1 truncate text-[11px] leading-tight ${selectedChatId === chat.id ? 'text-[#d7e3ef]' : 'text-[#9aa6b2]'}`}>{chat.lastMessagePreview}</p>
-                      )}
-                      {chat.lastMessageAt && (
-                        <p className={`mt-1 text-[10px] ${selectedChatId === chat.id ? 'text-[#b9c8d8]' : 'text-[#778391]'}`}>{new Date(chat.lastMessageAt).toLocaleString()}</p>
-                      )}
-                    </div>
-                  </button>
-                ))}
+                {chatPriorityGroups.priorityChats.map(renderChatRow)}
+                {showChatPrioritySeparator && <div className="my-1 border-t border-mc-border/50" aria-hidden="true" />}
+                {chatPriorityGroups.otherChats.map(renderChatRow)}
               </div>
             )}
           </aside>
