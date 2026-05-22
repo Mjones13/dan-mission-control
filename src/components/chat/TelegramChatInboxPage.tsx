@@ -267,7 +267,8 @@ export function TelegramChatInboxPage() {
       ? 'border-yellow-300 bg-yellow-300 text-mc-bg shadow-[0_0_8px_rgba(253,224,71,0.35)] hover:border-yellow-200 hover:bg-yellow-200'
       : markerState.displayState === 'read'
         ? 'border-mc-accent bg-mc-accent text-mc-bg shadow-[0_0_8px_rgba(88,166,255,0.35)] hover:border-[#8ec5ff] hover:bg-[#8ec5ff]'
-        : 'border-mc-border text-transparent hover:border-mc-accent hover:text-mc-accent';
+        : 'border-mc-border text-[#778391] hover:border-mc-accent hover:text-mc-accent';
+    const markerGlyph = markerState.displayState === 'starred' ? '★' : markerState.displayState === 'read' ? '✓' : '○';
 
     return (
       <button
@@ -277,7 +278,7 @@ export function TelegramChatInboxPage() {
         className={`flex h-6 w-6 items-center justify-center rounded-full border text-sm leading-none transition-colors ${markerClassName}`}
         title={markerLabel}
       >
-        {markerState.displayState === 'starred' ? '★' : markerState.displayState === 'read' ? '✓' : ''}
+        {markerGlyph}
       </button>
     );
   };
