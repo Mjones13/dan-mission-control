@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, Loader, MessageSquare } from 'lucide-react';
+import Link from 'next/link';
 import { TELEGRAM_TEXT_MESSAGE_LIMIT, splitTelegramMessageText } from '@/lib/telegram/message-chunks';
 import { useTelegramChatInbox, type TelegramMessage } from './useTelegramChatInbox';
 import { getTelegramChatEmoji, visibleTelegramMessages } from './telegramChatDisplay';
@@ -399,6 +400,18 @@ export function TelegramChatInboxPage() {
             {error}
           </div>
         )}
+
+        <div className="flex items-center border-b border-mc-border bg-mc-bg-secondary px-3 py-2">
+          <Link
+            href="/"
+            aria-label="Back to Mission Control home"
+            title="Back to Mission Control home"
+            className="flex items-center gap-3 rounded-lg px-2 py-1 text-mc-text transition-colors hover:bg-mc-bg-tertiary"
+          >
+            <span className="text-2xl leading-none" aria-hidden="true">🦞</span>
+            <span className="text-sm font-semibold uppercase tracking-wider">Mission Control</span>
+          </Link>
+        </div>
 
         <div className="flex min-h-0 flex-1">
           <aside className={`${selectedChatId ? 'hidden md:flex' : 'flex'} w-full flex-col border-r border-mc-border md:w-[240px]`}>
