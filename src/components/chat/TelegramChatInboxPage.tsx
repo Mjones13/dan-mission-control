@@ -151,7 +151,7 @@ export function TelegramChatInboxPage() {
 
   useEffect(() => {
     if (highlightedMessageId === null) return;
-    const timeout = window.setTimeout(() => setHighlightedMessageId(null), 1800);
+    const timeout = window.setTimeout(() => setHighlightedMessageId(null), 3600);
     return () => window.clearTimeout(timeout);
   }, [highlightedMessageId]);
 
