@@ -45,6 +45,11 @@ type ManualReplyJumpGuard = {
 const MANUAL_REPLY_JUMP_TARGET_THRESHOLD_PX = 8;
 const MANUAL_REPLY_JUMP_MAX_MS = 1000;
 const MESSAGE_HIGHLIGHT_DURATION_MS = 2400;
+const CHILD_REPLY_MENU_ROOT_SELECTOR = '[data-child-reply-menu-root]';
+
+export function isInsideChildReplyMenuRoot(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(CHILD_REPLY_MENU_ROOT_SELECTOR) !== null;
+}
 
 function getScrollSnapshot(el: HTMLDivElement): ScrollSnapshot {
   return { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight };
@@ -114,6 +119,27 @@ export function TelegramChatInboxPage() {
   );
   const chatPriorityGroups = useMemo(() => groupTelegramChatsByPriority(chats), [chats]);
   const showChatPrioritySeparator = shouldRenderTelegramChatPrioritySeparator(chatPriorityGroups);
+
+  useEffect(() => {
+    if (openChildReplyMenuFor === null) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (isInsideChildReplyMenuRoot(event.target)) return;
+      setOpenChildReplyMenuFor(null);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setOpenChildReplyMenuFor(null);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [openChildReplyMenuFor]);
 
   function cancelManualReplyJumpChecks() {
     if (manualReplyJumpFrameRef.current !== null) {
@@ -547,7 +573,7 @@ export function TelegramChatInboxPage() {
     // sibling branches, so let the user choose instead of pretending there is a
     // canonical next message in the thread.
     return (
-      <div className="relative">
+      <div className="relative" data-child-reply-menu-root>
         <button
           type="button"
           onClick={() => {
