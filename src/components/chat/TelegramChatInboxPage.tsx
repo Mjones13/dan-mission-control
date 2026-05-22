@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, Loader, MessageSquare } from 'lucide-react';
+import Link from 'next/link';
 import { TELEGRAM_TEXT_MESSAGE_LIMIT, splitTelegramMessageText } from '@/lib/telegram/message-chunks';
 import { useTelegramChatInbox, type TelegramMessage } from './useTelegramChatInbox';
 import { getTelegramChatEmoji, visibleTelegramMessages } from './telegramChatDisplay';
@@ -10,10 +11,13 @@ import { playTelegramSentSound, primeTelegramSentSound } from '@/lib/audio/teleg
 import { canStartTelegramSend, recoverFailedTelegramDraft, shouldSendTelegramComposerFromKeyDown, telegramSendButtonClassName } from './telegramComposerSendState';
 import { useTelegramReplyContext } from './useTelegramReplyContext';
 import { TelegramMessageBubble, TelegramReplyContextModal } from './TelegramReplyContextViews';
+import { createLoadedDirectRepliesByParentId, telegramDisplaySenderLabel } from './telegramReplyContext';
+import { filterTelegramMessagesForView, type TelegramMessageViewFilter } from './telegramMessageViews';
 import {
   appendedMessageCount,
   classifyMessageListChange,
   getScrollBottom,
+  scrollTopForCenteredElement,
   scrollTopForPreservedBottom,
   shouldRestoreOlderMessageAnchor,
 } from './telegramScrollAnchoring';
@@ -23,6 +27,17 @@ const CHAT_FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Seg
 type ScrollSnapshot = {
   scrollTop: number;
 };
+
+type ManualReplyJumpGuard = {
+  chatId: string;
+  messageId: number;
+  targetScrollTop: number;
+  startedAt: number;
+};
+
+const MANUAL_REPLY_JUMP_TARGET_THRESHOLD_PX = 8;
+const MANUAL_REPLY_JUMP_MAX_MS = 1000;
+const MESSAGE_HIGHLIGHT_DURATION_MS = 2400;
 
 function getScrollSnapshot(el: HTMLDivElement): ScrollSnapshot {
   return { scrollTop: el.scrollTop };
@@ -49,7 +64,10 @@ export function TelegramChatInboxPage() {
   } = useTelegramChatInbox();
   const [composerText, setComposerText] = useState('');
   const [replyingTo, setReplyingTo] = useState<TelegramMessage | null>(null);
-  const { getMarkerState, markReadMarker, markReplyParentsRead, cycleMarker } = useTelegramAgentReadMarkers();
+  const [activeMessageFilter, setActiveMessageFilter] = useState<TelegramMessageViewFilter>('all');
+  const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
+  const [openChildReplyMenuFor, setOpenChildReplyMenuFor] = useState<number | null>(null);
+  const { getMarkerState, markReadMarker, markReadAndStarredMarker, markReplyParentsRead, cycleMarker } = useTelegramAgentReadMarkers();
   const replyContext = useTelegramReplyContext({ chatId: selectedChatId, messages });
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(true);
@@ -57,12 +75,88 @@ export function TelegramChatInboxPage() {
   const scrollStateRef = useRef<{ chatId: string | null; messageIds: number[] }>({ chatId: null, messageIds: [] });
   const preRenderScrollSnapshotRef = useRef<ScrollSnapshot | null>(null);
   const loadOlderAnchorPendingRef = useRef<{ chatId: string; scrollBottom: number } | null>(null);
+  const manualReplyJumpGuardRef = useRef<ManualReplyJumpGuard | null>(null);
+  const manualReplyJumpFrameRef = useRef<number | null>(null);
+  const manualReplyJumpTimeoutRef = useRef<number | null>(null);
   const [unseenNewMessageCount, setUnseenNewMessageCount] = useState(0);
   const previousChatIdRef = useRef<string | null>(null);
   const trimmedComposerText = composerText.trim();
   const composerChunks = splitTelegramMessageText(trimmedComposerText);
   const composerChunkCount = composerChunks.length;
-  const renderedMessages = useMemo(() => visibleTelegramMessages(messages), [messages]);
+  const visibleMessages = useMemo(() => visibleTelegramMessages(messages), [messages]);
+  const renderedMessages = useMemo(() => {
+    if (!selectedChatId) return visibleMessages;
+    // Filters are intentionally client-side over currently loaded text messages.
+    // The read/starred state is Mission Control-local and should not trigger a
+    // Telegram history scan or change Telegram's native read state.
+    return filterTelegramMessagesForView(visibleMessages, activeMessageFilter, (messageId) => getMarkerState(selectedChatId, messageId));
+  }, [activeMessageFilter, getMarkerState, selectedChatId, visibleMessages]);
+  // Build reply-jump affordances from the rendered list, not the full cache, so
+  // every child target is present in the DOM when jumpToMessage runs.
+  const directRepliesByParentId = useMemo(
+    () => createLoadedDirectRepliesByParentId(renderedMessages),
+    [renderedMessages],
+  );
+
+  function cancelManualReplyJumpChecks() {
+    if (manualReplyJumpFrameRef.current !== null) {
+      window.cancelAnimationFrame(manualReplyJumpFrameRef.current);
+      manualReplyJumpFrameRef.current = null;
+    }
+    if (manualReplyJumpTimeoutRef.current !== null) {
+      window.clearTimeout(manualReplyJumpTimeoutRef.current);
+      manualReplyJumpTimeoutRef.current = null;
+    }
+  }
+
+  function clearManualReplyJumpGuard() {
+    manualReplyJumpGuardRef.current = null;
+    cancelManualReplyJumpChecks();
+  }
+
+  function isManualReplyJumpComplete(guard: ManualReplyJumpGuard, el: HTMLDivElement) {
+    return (
+      Math.abs(el.scrollTop - guard.targetScrollTop) <= MANUAL_REPLY_JUMP_TARGET_THRESHOLD_PX ||
+      window.performance.now() - guard.startedAt >= MANUAL_REPLY_JUMP_MAX_MS
+    );
+  }
+
+  function trackManualReplyJump(scrollEl: HTMLDivElement, guard: ManualReplyJumpGuard) {
+    cancelManualReplyJumpChecks();
+    manualReplyJumpGuardRef.current = guard;
+
+    const check = () => {
+      const currentGuard = manualReplyJumpGuardRef.current;
+      if (
+        !currentGuard ||
+        currentGuard.chatId !== guard.chatId ||
+        currentGuard.messageId !== guard.messageId
+      ) {
+        manualReplyJumpFrameRef.current = null;
+        return;
+      }
+      if (isManualReplyJumpComplete(currentGuard, scrollEl)) {
+        clearManualReplyJumpGuard();
+        return;
+      }
+      manualReplyJumpFrameRef.current = window.requestAnimationFrame(check);
+    };
+
+    manualReplyJumpFrameRef.current = window.requestAnimationFrame(check);
+    manualReplyJumpTimeoutRef.current = window.setTimeout(() => {
+      const currentGuard = manualReplyJumpGuardRef.current;
+      if (
+        currentGuard?.chatId === guard.chatId &&
+        currentGuard.messageId === guard.messageId
+      ) {
+        clearManualReplyJumpGuard();
+      }
+    }, MANUAL_REPLY_JUMP_MAX_MS);
+  }
+
+  useEffect(() => {
+    return () => clearManualReplyJumpGuard();
+  }, []);
 
   useEffect(() => {
     const previousChatId = previousChatIdRef.current;
@@ -70,6 +164,8 @@ export function TelegramChatInboxPage() {
       shouldScrollToBottomRef.current = !selectedCacheEntry?.messages.length;
       isNearBottomRef.current = true;
       setReplyingTo(null);
+      setActiveMessageFilter('all');
+      setOpenChildReplyMenuFor(null);
       replyContext.closeThread();
     }
     previousChatIdRef.current = selectedChatId;
@@ -92,30 +188,58 @@ export function TelegramChatInboxPage() {
     const beforeSnapshot = preRenderScrollSnapshotRef.current;
     const wasNearBottom = isNearBottomRef.current;
 
-    if (chatChanged) {
-      if (selectedCacheEntry?.scrollTop !== undefined && currentMessageIds.length > 0) {
-        el.scrollTop = selectedCacheEntry.scrollTop;
-      } else {
+    const manualReplyJumpGuard = manualReplyJumpGuardRef.current;
+    const manualReplyJumpInProgress =
+      manualReplyJumpGuard?.chatId === selectedChatId &&
+      !isManualReplyJumpComplete(manualReplyJumpGuard, el);
+
+    if (manualReplyJumpInProgress) {
+      // Manual smooth reply jumps own scroll position briefly. Do not let normal
+      // chat-change/near-bottom/cache restoration snap over the in-flight jump.
+    } else {
+      if (manualReplyJumpGuard?.chatId === selectedChatId) {
+        clearManualReplyJumpGuard();
+      }
+
+      if (chatChanged) {
+        if (selectedCacheEntry?.scrollTop !== undefined && currentMessageIds.length > 0) {
+          el.scrollTop = selectedCacheEntry.scrollTop;
+        } else {
+          el.scrollTop = el.scrollHeight;
+        }
+        setUnseenNewMessageCount(0);
+      } else if (
+        shouldRestoreOlderMessageAnchor(
+          messageListChange,
+          loadOlderAnchorPendingRef.current?.chatId === selectedChatId,
+        ) && loadOlderAnchorPendingRef.current
+      ) {
+        el.scrollTop = scrollTopForPreservedBottom(
+          el.scrollHeight,
+          loadOlderAnchorPendingRef.current.scrollBottom,
+          el.clientHeight,
+        );
+        const newCount = appendedMessageCount(previousScrollState.messageIds, currentMessageIds);
+        if (newCount > 0) {
+          setUnseenNewMessageCount((count) => count + newCount);
+        }
+      } else if (shouldScrollToBottomRef.current || wasNearBottom) {
         el.scrollTop = el.scrollHeight;
+        setUnseenNewMessageCount(0);
+      } else if (
+        (messageListChange === 'append' ||
+          messageListChange === 'prepend' ||
+          messageListChange === 'mixed') &&
+        beforeSnapshot
+      ) {
+        el.scrollTop = beforeSnapshot.scrollTop;
+        const newCount = appendedMessageCount(previousScrollState.messageIds, currentMessageIds);
+        if (newCount > 0) {
+          setUnseenNewMessageCount((count) => count + newCount);
+        }
+      } else if (selectedCacheEntry?.scrollTop !== undefined) {
+        el.scrollTop = selectedCacheEntry.scrollTop;
       }
-      setUnseenNewMessageCount(0);
-    } else if (shouldRestoreOlderMessageAnchor(messageListChange, loadOlderAnchorPendingRef.current?.chatId === selectedChatId) && loadOlderAnchorPendingRef.current) {
-      el.scrollTop = scrollTopForPreservedBottom(el.scrollHeight, loadOlderAnchorPendingRef.current.scrollBottom, el.clientHeight);
-      const newCount = appendedMessageCount(previousScrollState.messageIds, currentMessageIds);
-      if (newCount > 0) {
-        setUnseenNewMessageCount((count) => count + newCount);
-      }
-    } else if (shouldScrollToBottomRef.current || wasNearBottom) {
-      el.scrollTop = el.scrollHeight;
-      setUnseenNewMessageCount(0);
-    } else if ((messageListChange === 'append' || messageListChange === 'prepend' || messageListChange === 'mixed') && beforeSnapshot) {
-      el.scrollTop = beforeSnapshot.scrollTop;
-      const newCount = appendedMessageCount(previousScrollState.messageIds, currentMessageIds);
-      if (newCount > 0) {
-        setUnseenNewMessageCount((count) => count + newCount);
-      }
-    } else if (selectedCacheEntry?.scrollTop !== undefined) {
-      el.scrollTop = selectedCacheEntry.scrollTop;
     }
 
     shouldScrollToBottomRef.current = false;
@@ -130,6 +254,12 @@ export function TelegramChatInboxPage() {
       preRenderScrollSnapshotRef.current = getScrollSnapshot(el);
     };
   }, [renderedMessages, selectedCacheEntry?.scrollTop, selectedChatId, setChatScrollTop]);
+
+  useEffect(() => {
+    if (highlightedMessageId === null) return;
+    const timeout = window.setTimeout(() => setHighlightedMessageId(null), MESSAGE_HIGHLIGHT_DURATION_MS);
+    return () => window.clearTimeout(timeout);
+  }, [highlightedMessageId]);
 
   useEffect(() => {
     if (!selectedChatId) return;
@@ -163,6 +293,42 @@ export function TelegramChatInboxPage() {
     }
     shouldScrollToBottomRef.current = false;
     await loadOlderMessages();
+  };
+
+  const jumpToMessage = (messageId: number) => {
+    const scrollEl = scrollRef.current;
+    const selector = `[data-telegram-message-id="${messageId}"]`;
+    const targetEl = scrollEl?.querySelector<HTMLElement>(selector);
+    if (!scrollEl || !targetEl || !selectedChatId) return;
+
+    // Manual jumps should not be overridden by the normal "near bottom" auto
+    // scroll path on the next render; the short highlight makes the landing
+    // point visible after smooth scrolling.
+    shouldScrollToBottomRef.current = false;
+    const scrollRect = scrollEl.getBoundingClientRect();
+    const targetRect = targetEl.getBoundingClientRect();
+    const targetScrollTop = scrollTopForCenteredElement(
+      scrollEl.scrollTop,
+      scrollRect.top,
+      scrollEl.clientHeight,
+      targetRect.top,
+      targetRect.height,
+    );
+    const normalizedTargetScrollTop = Math.max(0, targetScrollTop);
+    trackManualReplyJump(scrollEl, {
+      chatId: selectedChatId,
+      messageId,
+      targetScrollTop: normalizedTargetScrollTop,
+      startedAt: window.performance.now(),
+    });
+    scrollEl.scrollTo({ top: normalizedTargetScrollTop, behavior: 'smooth' });
+    setHighlightedMessageId(messageId);
+    setOpenChildReplyMenuFor(null);
+    window.setTimeout(() => {
+      const distanceFromBottom = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight;
+      isNearBottomRef.current = distanceFromBottom < 80;
+      if (selectedChatId) setChatScrollTop(selectedChatId, scrollEl.scrollTop);
+    }, 0);
   };
 
   const jumpToLatestMessages = () => {
@@ -224,6 +390,36 @@ export function TelegramChatInboxPage() {
   };
 
   const renderMessageMarkerButton = (chatId: string, messageId: number) => {
+    if (activeMessageFilter === 'unread') {
+      const readLabel = 'Mark this message read locally';
+      const starLabel = 'Mark this message read and star for follow-up';
+
+      // In the unread queue, expose the two triage exits directly: handled now
+      // or handled later. Outside that queue the marker cycles through states.
+      return (
+        <div className="flex items-center gap-1" aria-label="Unread message marker actions">
+          <button
+            type="button"
+            onClick={() => markReadMarker(chatId, messageId)}
+            aria-label={readLabel}
+            className="flex h-6 w-6 items-center justify-center rounded-full border border-mc-border text-transparent leading-none transition-colors hover:border-mc-accent hover:text-mc-accent"
+            title={readLabel}
+          >
+            ✓
+          </button>
+          <button
+            type="button"
+            onClick={() => markReadAndStarredMarker(chatId, messageId)}
+            aria-label={starLabel}
+            className="flex h-6 w-6 items-center justify-center rounded-full border border-mc-border bg-transparent text-sm leading-none text-[#9aa6b2] transition-colors hover:border-yellow-300 hover:text-yellow-300"
+            title={starLabel}
+          >
+            ☆
+          </button>
+        </div>
+      );
+    }
+
     const markerState = getMarkerState(chatId, messageId);
     const markerLabel = markerState.displayState === 'starred'
       ? 'Clear local read and follow-up markers'
@@ -249,8 +445,83 @@ export function TelegramChatInboxPage() {
     );
   };
 
+  const formatChildReplyPreview = (message: TelegramMessage) => {
+    const senderLabel = telegramDisplaySenderLabel(message, selectedChatTitle) || 'Reply';
+    const snippet = message.text.replace(/\s+/g, ' ').trim() || 'Message';
+    return `${senderLabel}: ${snippet}`;
+  };
+
+  const renderChildNavigationButton = (message: TelegramMessage, directReplies: TelegramMessage[]) => {
+    if (directReplies.length === 0) return null;
+    const hasMultipleReplies = directReplies.length > 1;
+    const label = hasMultipleReplies ? `Show ${directReplies.length} replies` : 'Jump to reply';
+
+    // Single child replies can be jumped to immediately. Multiple children are
+    // sibling branches, so let the user choose instead of pretending there is a
+    // canonical next message in the thread.
+    return (
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => {
+            if (hasMultipleReplies) {
+              setOpenChildReplyMenuFor((current) => (current === message.id ? null : message.id));
+            } else {
+              jumpToMessage(directReplies[0].id);
+            }
+          }}
+          aria-label={label}
+          aria-expanded={hasMultipleReplies ? openChildReplyMenuFor === message.id : undefined}
+          className="flex h-6 min-w-6 items-center justify-center px-1.5 text-xs leading-none text-[#9aa6b2] transition-colors hover:text-mc-accent"
+          title={label}
+        >
+          ↓{hasMultipleReplies ? <span className="ml-0.5 text-[10px]">{directReplies.length}</span> : null}
+        </button>
+        {hasMultipleReplies && openChildReplyMenuFor === message.id && (
+          <div className="absolute bottom-7 right-0 z-20 w-64 overflow-hidden rounded-lg border border-mc-border bg-mc-bg-secondary shadow-xl shadow-black/40">
+            {directReplies.map((reply) => (
+              <button
+                key={reply.id}
+                type="button"
+                onClick={() => jumpToMessage(reply.id)}
+                className="block w-full border-b border-mc-border/60 px-3 py-2 text-left text-[11px] text-[#cbd6e2] last:border-b-0 hover:bg-mc-bg-tertiary hover:text-white"
+                title={formatChildReplyPreview(reply)}
+              >
+                <span className="block truncate">{formatChildReplyPreview(reply)}</span>
+                <span className="mt-0.5 block text-[10px] text-[#778391]">{new Date(reply.sentAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderFilterButton = (filter: Exclude<TelegramMessageViewFilter, 'all'>, label: string) => {
+    const active = activeMessageFilter === filter;
+    return (
+      <button
+        type="button"
+        onClick={() => setActiveMessageFilter((current) => (current === filter ? 'all' : filter))}
+        aria-pressed={active}
+        className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${active ? 'border-mc-accent bg-mc-accent text-mc-bg' : 'border-mc-border text-[#9aa6b2] hover:border-mc-accent hover:text-mc-accent'}`}
+      >
+        {label}
+      </button>
+    );
+  };
+
   return (
     <main className="min-h-screen bg-mc-bg p-2 text-[#f5f7fb] md:p-4" style={{ fontFamily: CHAT_FONT_FAMILY }}>
+      <Link
+        href="/"
+        aria-label="Back to Mission Control home"
+        title="Back to Mission Control home"
+        className="fixed left-4 top-4 z-50 hidden items-center rounded-lg px-2 py-1 text-mc-text transition-colors hover:bg-mc-bg-tertiary 2xl:flex"
+      >
+        <span className="text-2xl leading-none" aria-hidden="true">🦞</span>
+      </Link>
+
       <div className="mx-auto flex h-[calc(100vh-1rem)] max-w-[88rem] flex-col overflow-hidden rounded-2xl border border-mc-border bg-mc-bg-secondary shadow-2xl shadow-black/30 md:h-[calc(100vh-2rem)]">
         {error && (
           <div className="border-b border-red-500/20 bg-red-500/10 px-4 py-2 text-xs text-red-300">
@@ -314,41 +585,74 @@ export function TelegramChatInboxPage() {
               </div>
             ) : (
               <>
-                <div className="relative min-h-0 flex-1">
-                  <div ref={scrollRef} onScroll={handleThreadScroll} className="h-full space-y-2.5 overflow-y-auto p-3">
+                <header className="flex flex-wrap items-center gap-2 border-b border-mc-border px-3 py-2">
                   <button
                     onClick={backToList}
-                    className="mb-1 flex items-center gap-1 rounded px-2 py-1 text-xs text-[#9aa6b2] transition-colors hover:bg-mc-bg-tertiary hover:text-[#f5f7fb] md:hidden"
+                    className="flex items-center gap-1 rounded px-2 py-1 text-xs text-[#9aa6b2] transition-colors hover:bg-mc-bg-tertiary hover:text-[#f5f7fb] md:hidden"
                     title="Back to chats"
                   >
                     <ChevronLeft className="h-4 w-4" />
-                    Back to chats
+                    Back
                   </button>
-                  {hasOlderMessages && messages.length > 0 && (
-                    <div className="flex justify-center">
-                      <button
-                        onClick={handleLoadOlderMessages}
-                        disabled={loadingOlder}
-                        className="rounded-full border border-mc-border px-3 py-1 text-[10px] text-[#9aa6b2] transition-colors hover:border-mc-accent hover:text-mc-accent disabled:opacity-50"
-                      >
-                        {loadingOlder ? 'Loading…' : 'Load older messages'}
-                      </button>
-                    </div>
-                  )}
-                  {renderedMessages.map((message) => (
-                    <div key={message.id} data-message-id={message.id}>
-                      <TelegramMessageBubble
-                        message={message}
-                        preview={replyContext.inlinePreviewByMessageId[message.id]}
-                        canOpenThread={replyContext.canOpenThread(message)}
-                        onOpenThread={(threadMessage) => void replyContext.openThread(threadMessage)}
-                        onReply={setReplyingTo}
-                        showReadMarker={!message.isOutgoing && Boolean(selectedChatId)}
-                        readMarkerNode={selectedChatId ? renderMessageMarkerButton(selectedChatId, message.id) : undefined}
-                        chatTitle={selectedChatTitle}
-                      />
-                    </div>
-                  ))}
+                  <div className="min-w-0 flex-1">
+                    <h1 className="truncate text-sm font-semibold text-[#f5f7fb]">{selectedChatTitle || 'Telegram group'}</h1>
+                    {activeMessageFilter !== 'all' && (
+                      <p className="text-[10px] text-[#778391]">
+                        Showing {activeMessageFilter === 'unread' ? 'loaded local unread' : 'loaded starred'} messages in this chat.
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {renderFilterButton('unread', 'Unread')}
+                    {renderFilterButton('starred', '★ Starred')}
+                  </div>
+                </header>
+                <div className="relative min-h-0 flex-1">
+                  <div ref={scrollRef} onScroll={handleThreadScroll} className="h-full space-y-2.5 overflow-y-auto p-3">
+                    {hasOlderMessages && messages.length > 0 && (
+                      <div className="flex justify-center">
+                        <button
+                          onClick={handleLoadOlderMessages}
+                          disabled={loadingOlder}
+                          className="rounded-full border border-mc-border px-3 py-1 text-[10px] text-[#9aa6b2] transition-colors hover:border-mc-accent hover:text-mc-accent disabled:opacity-50"
+                        >
+                          {loadingOlder ? 'Loading…' : 'Load older messages'}
+                        </button>
+                      </div>
+                    )}
+                    {renderedMessages.length === 0 && (
+                      <div className="rounded-lg border border-dashed border-mc-border bg-mc-bg/50 p-4 text-center text-xs text-[#9aa6b2]">
+                        {activeMessageFilter === 'unread'
+                          ? 'No loaded unread messages in this chat.'
+                          : activeMessageFilter === 'starred'
+                            ? 'No loaded starred messages in this chat.'
+                            : 'No messages in this chat.'}
+                      </div>
+                    )}
+                    {renderedMessages.map((message, index) => {
+                      const directReplies = directRepliesByParentId.get(message.id) || [];
+
+                      return (
+                        <div
+                          key={`${message.id}-${index}`}
+                          data-message-id={message.id}
+                          data-telegram-message-id={message.id}
+                        >
+                          <TelegramMessageBubble
+                            message={message}
+                            preview={replyContext.inlinePreviewByMessageId[message.id]}
+                            canOpenThread={replyContext.canOpenThread(message)}
+                            onOpenThread={(threadMessage) => void replyContext.openThread(threadMessage)}
+                            onReply={setReplyingTo}
+                            showReadMarker={!message.isOutgoing && Boolean(selectedChatId)}
+                            readMarkerNode={selectedChatId ? renderMessageMarkerButton(selectedChatId, message.id) : undefined}
+                            childNavigationNode={renderChildNavigationButton(message, directReplies)}
+                            highlighted={highlightedMessageId === message.id}
+                            chatTitle={selectedChatTitle}
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
                   {unseenNewMessageCount > 0 && (
                     <button

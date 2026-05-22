@@ -8,6 +8,7 @@ import {
   isTelegramAgentMessageMarkedRead,
   isTelegramAgentMessageStarred,
   markTelegramAgentMessageRead,
+  markTelegramAgentMessageReadAndStarred,
   markTelegramAgentMessageStarred,
   markTelegramAgentMessagesRead,
   parseTelegramAgentMessageMarkers,
@@ -138,6 +139,12 @@ test('markTelegramAgentMessageRead sets read only and preserves an existing star
   const markers = markTelegramAgentMessageRead({ read: {}, starred: { chat: [1] } }, 'chat', 1);
 
   assert.deepEqual(markers, { read: { chat: [1] }, starred: { chat: [1] } });
+});
+
+test('markTelegramAgentMessageReadAndStarred marks a message as handled and starred in one step', () => {
+  const markers = markTelegramAgentMessageReadAndStarred({ read: { other: [2] }, starred: {} }, 'chat', 1);
+
+  assert.deepEqual(markers, { read: { other: [2], chat: [1] }, starred: { chat: [1] } });
 });
 
 test('clearTelegramAgentMessageMarkers removes the selected id from both lists without affecting other chats', () => {

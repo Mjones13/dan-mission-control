@@ -138,6 +138,20 @@ export function markTelegramAgentMessageStarred(
   return { ...markers, starred };
 }
 
+export function markTelegramAgentMessageReadAndStarred(
+  markers: TelegramAgentMessageMarkers,
+  chatId: string,
+  messageId: number,
+): TelegramAgentMessageMarkers {
+  // Starred messages are also marked read so a follow-up cannot remain in both
+  // the local unread queue and the local starred queue at the same time.
+  return markTelegramAgentMessageStarred(
+    markTelegramAgentMessageRead(markers, chatId, messageId),
+    chatId,
+    messageId,
+  );
+}
+
 export function unmarkTelegramAgentMessageRead(
   markers: TelegramAgentMessageMarkers,
   chatId: string,
@@ -219,6 +233,10 @@ export function toggleTelegramAgentMessageRead(
 }
 
 export function replyParentReadMarkerIds(messages: TelegramMessage[]): number[] {
+  // When M Jones/the agent replies to an incoming message, treat the parent as
+  // locally handled. This does not acknowledge anything back to Telegram; it
+  // only keeps Mission Control's local triage queue from resurfacing answered
+  // prompts.
   const incomingMessageIds = new Set(messages.filter((message) => !message.isOutgoing).map((message) => message.id));
   const parentIds = messages
     .filter((message) => message.isOutgoing && message.replyToMessageId !== null && incomingMessageIds.has(message.replyToMessageId))
@@ -263,6 +281,10 @@ export function useTelegramAgentReadMarkers() {
     updateMarkers((current) => markTelegramAgentMessageRead(current, chatId, messageId));
   }, [updateMarkers]);
 
+  const markReadAndStarredMarker = useCallback((chatId: string, messageId: number) => {
+    updateMarkers((current) => markTelegramAgentMessageReadAndStarred(current, chatId, messageId));
+  }, [updateMarkers]);
+
   const markReplyParentsRead = useCallback((chatId: string, messages: TelegramMessage[]) => {
     const parentIds = replyParentReadMarkerIds(messages);
     updateMarkers((current) => markTelegramAgentMessagesRead(current, chatId, parentIds));
@@ -281,6 +303,7 @@ export function useTelegramAgentReadMarkers() {
     isMarkedRead,
     isStarred,
     markReadMarker,
+    markReadAndStarredMarker,
     markReplyParentsRead,
     cycleMarker,
     clearMarkers,

@@ -43,6 +43,8 @@ interface MessageBubbleProps {
   showReadMarker?: boolean;
   readMarked?: boolean;
   readMarkerNode?: ReactNode;
+  childNavigationNode?: ReactNode;
+  highlighted?: boolean;
   onToggleRead?: () => void;
   onReply(message: TelegramMessage): void;
   onOpenThread?(message: TelegramMessage): void;
@@ -57,6 +59,8 @@ export function TelegramMessageBubble({
   showReadMarker = false,
   readMarked = false,
   readMarkerNode,
+  childNavigationNode,
+  highlighted = false,
   onToggleRead,
   onReply,
   onOpenThread,
@@ -67,7 +71,7 @@ export function TelegramMessageBubble({
 
   return (
     <div className={message.isOutgoing ? (compact ? 'ml-6' : 'ml-8') : (compact ? 'mr-6' : 'mr-8')}>
-      <div className={`rounded-lg border ${compact ? 'px-3 py-2.5' : 'px-3.5 py-2.5'} ${message.isOutgoing ? 'border-[#4f9ce8]/25 bg-[#234b73]' : 'border-[#314154] bg-[#17212f]'}`}>
+      <div className={`rounded-lg border transition-[background-color,box-shadow] duration-300 ${compact ? 'px-3 py-2.5' : 'px-3.5 py-2.5'} ${message.isOutgoing ? 'border-[#4f9ce8]/25 bg-[#234b73]' : 'border-[#314154] bg-[#17212f]'} ${highlighted ? 'shadow-[0_0_0_2px_rgba(88,166,255,0.65),0_0_18px_rgba(88,166,255,0.45)]' : ''}`}>
         <div className="mb-2 flex items-center gap-3 text-[10px] text-[#aab3bd]">
           {senderLabel && <span>{senderLabel}</span>}
           {message.isOutgoing && message.reactionCount > 0 && <span className="text-[#c6d0dc]">✓ ack</span>}
@@ -77,20 +81,26 @@ export function TelegramMessageBubble({
         </div>
         {preview && <TelegramInlineReplyPreview preview={preview} compact={compact} onOpenThread={canOpenThread && onOpenThread ? () => onOpenThread(message) : undefined} />}
         <LinkifiedText className="whitespace-pre-wrap text-sm leading-relaxed text-[#fbfdff]">{message.text}</LinkifiedText>
-        {showReadMarker && (
+        {(showReadMarker || childNavigationNode) && (
           <div className="mt-2 flex justify-end">
-            {readMarkerNode || (onToggleRead && (
-              <button
-                type="button"
-                onClick={onToggleRead}
-                aria-label={readMarked ? 'Marked read locally' : 'Mark this message read locally'}
-                aria-pressed={readMarked}
-                className={`flex ${compact ? 'h-5 w-5 text-xs' : 'h-6 w-6 text-sm'} items-center justify-center rounded-full border leading-none transition-colors ${readMarked ? 'border-mc-accent bg-mc-accent text-mc-bg shadow-[0_0_8px_rgba(88,166,255,0.35)]' : 'border-mc-border text-transparent hover:border-mc-accent hover:text-mc-accent'}`}
-                title={readMarked ? 'Marked read locally' : 'Mark this message read locally'}
-              >
-                {readMarked ? '✓' : ''}
-              </button>
-            ))}
+            <div className="flex items-center gap-1">
+              {/* Child navigation and the local read marker share this compact
+                  footer so reply jumps stay visually tied to the message they
+                  operate on without crowding the bubble header actions. */}
+              {childNavigationNode}
+              {showReadMarker && (readMarkerNode || (onToggleRead && (
+                <button
+                  type="button"
+                  onClick={onToggleRead}
+                  aria-label={readMarked ? 'Marked read locally' : 'Mark this message read locally'}
+                  aria-pressed={readMarked}
+                  className={`flex ${compact ? 'h-5 w-5 text-xs' : 'h-6 w-6 text-sm'} items-center justify-center rounded-full border leading-none transition-colors ${readMarked ? 'border-mc-accent bg-mc-accent text-mc-bg shadow-[0_0_8px_rgba(88,166,255,0.35)]' : 'border-mc-border text-transparent hover:border-mc-accent hover:text-mc-accent'}`}
+                  title={readMarked ? 'Marked read locally' : 'Mark this message read locally'}
+                >
+                  {readMarked ? '✓' : ''}
+                </button>
+              )))}
+            </div>
           </div>
         )}
       </div>

@@ -1,3 +1,4 @@
+import { getKnownAgentAvatarEmoji } from '@/lib/agent-icons';
 import { isTelegramBridgeStatusMessage } from '@/lib/telegram/bridge-status';
 import type { TelegramChat, TelegramMessage } from './useTelegramChatInbox';
 
@@ -16,7 +17,7 @@ const CHAT_EMOJI_BY_TITLE: Record<string, string> = {
 export const RECENT_STATUS_MESSAGE_WINDOW = 5;
 
 export function getTelegramChatEmoji(chat: Pick<TelegramChat, 'id' | 'title'>): string {
-  return CHAT_EMOJI_BY_ID[chat.id] || CHAT_EMOJI_BY_TITLE[chat.title] || '💬';
+  return CHAT_EMOJI_BY_ID[chat.id] || CHAT_EMOJI_BY_TITLE[chat.title] || getKnownAgentAvatarEmoji(chat.title) || '💬';
 }
 
 export const isTelegramBridgeStatusText = isTelegramBridgeStatusMessage;

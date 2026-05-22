@@ -1,3 +1,4 @@
+import { getKnownAgentAvatarEmoji } from '@/lib/agent-icons';
 import { queryAll, queryOne, run, transaction } from '@/lib/db';
 import { getOpenClawClient } from '@/lib/openclaw/client';
 
@@ -64,18 +65,19 @@ export async function syncGatewayAgentsToCatalog(options?: { force?: boolean; re
 
         const name = ga.name || ga.label || gatewayId;
         const role = normalizeRole(name);
+        const avatarEmoji = getKnownAgentAvatarEmoji(name);
         const existingId = existingByGatewayId.get(gatewayId) || null;
 
         if (existingId) {
           run(
-            `UPDATE agents SET name = ?, role = CASE WHEN role IS NULL OR role = 'builder' THEN ? ELSE role END, model = COALESCE(?, model), source = 'gateway', updated_at = ? WHERE id = ?`,
-            [name, role, normaliseModel(ga.model), ts, existingId]
+            `UPDATE agents SET name = ?, role = CASE WHEN role IS NULL OR role = 'builder' THEN ? ELSE role END, model = COALESCE(?, model), source = 'gateway', avatar_emoji = CASE WHEN ? IS NOT NULL AND (avatar_emoji IS NULL OR avatar_emoji IN ('🤖', '🔗')) THEN ? ELSE avatar_emoji END, updated_at = ? WHERE id = ?`,
+            [name, role, normaliseModel(ga.model), avatarEmoji, avatarEmoji, ts, existingId]
           );
         } else {
           run(
             `INSERT INTO agents (id, name, role, description, avatar_emoji, is_master, workspace_id, model, source, gateway_agent_id, created_at, updated_at)
-             VALUES (lower(hex(randomblob(16))), ?, ?, ?, '🔗', 0, 'default', ?, 'gateway', ?, ?, ?)`,
-            [name, role, `Auto-synced from OpenClaw (${gatewayId})`, normaliseModel(ga.model), gatewayId, ts, ts]
+             VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, 0, 'default', ?, 'gateway', ?, ?, ?)`,
+            [name, role, `Auto-synced from OpenClaw (${gatewayId})`, avatarEmoji || '🔗', normaliseModel(ga.model), gatewayId, ts, ts]
           );
         }
         changed += 1;

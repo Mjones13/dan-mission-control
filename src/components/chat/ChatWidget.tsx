@@ -9,6 +9,7 @@ import {
   type TelegramPollingPolicy,
 } from '@/lib/telegram/policy';
 import { TelegramChatWidgetContent } from './TelegramChatWidgetContent';
+import type { TelegramMessageViewFilter } from './telegramMessageViews';
 
 export interface UnreadTask {
   task_id: string;
@@ -31,6 +32,7 @@ export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
   const [totalUnread, setTotalUnread] = useState(0);
+  const [activeMessageFilter, setActiveMessageFilter] = useState<TelegramMessageViewFilter>('all');
   const [telegramPolicy, setTelegramPolicy] = useState<TelegramPollingPolicy>(DEFAULT_TELEGRAM_POLLING_POLICY);
   const telegramPolicyRef = useRef<TelegramPollingPolicy>(DEFAULT_TELEGRAM_POLLING_POLICY);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
@@ -110,6 +112,22 @@ export function ChatWidget() {
     setIsOpen(false);
   };
 
+  const renderFilterButton = (filter: Exclude<TelegramMessageViewFilter, 'all'>, label: string) => {
+    const active = activeMessageFilter === filter;
+    // Filter state lives in the shell so the compact header controls and
+    // message list stay synchronized while the widget is resized.
+    return (
+      <button
+        type="button"
+        onClick={() => setActiveMessageFilter((current) => (current === filter ? 'all' : filter))}
+        aria-pressed={active}
+        className={`rounded-full border px-2 py-1 text-[10px] font-medium transition-colors ${active ? 'border-mc-accent bg-mc-accent text-mc-bg' : 'border-mc-border text-[#9aa6b2] hover:border-mc-accent hover:text-mc-accent'}`}
+      >
+        {label}
+      </button>
+    );
+  };
+
   const widthClass = isExpanded ? 'w-[950px]' : 'w-[475px]';
   const heightClass = isExpanded ? 'h-[790px]' : 'h-[530px]';
 
@@ -151,6 +169,10 @@ export function ChatWidget() {
               </div>
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
+              <div className="mr-1 flex items-center gap-1">
+                {renderFilterButton('unread', 'Unread')}
+                {renderFilterButton('starred', '★ Starred')}
+              </div>
               <button
                 onClick={() => setIsExpanded(!isExpanded)}
                 className="p-1.5 hover:bg-mc-bg-tertiary rounded transition-colors"
@@ -170,7 +192,11 @@ export function ChatWidget() {
 
           {/* Content */}
           <div className="flex-1 overflow-hidden">
-            <TelegramChatWidgetContent isExpanded={isExpanded} />
+            <TelegramChatWidgetContent
+              isExpanded={isExpanded}
+              activeMessageFilter={activeMessageFilter}
+              onMessageFilterChange={setActiveMessageFilter}
+            />
           </div>
 
           {/* Footer hint */}
