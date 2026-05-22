@@ -10,6 +10,9 @@ import {
 
 const CHAT_ID = '-5112572436';
 
+// Shared fixture for GramJS-like message envelopes. Tests override only the
+// field under examination so each assertion stays focused on normalization
+// behavior rather than full Telegram object construction.
 function messageEnvelope(overrides: Record<string, unknown> = {}) {
   return {
     id: 101,
@@ -43,6 +46,10 @@ test('normalizes a Telegram message envelope with text and allowlisted fields', 
 });
 
 test('accepts a cross-constructor GramJS-like VirtualClass envelope where instanceof would be brittle', () => {
+  // Regression coverage for dev/HMR and duplicate-dependency scenarios: the
+  // object has the fields GramJS gives us, but its constructor identity may not
+  // equal this module's `Api.Message` constructor. The structural guard should
+  // accept it instead of dropping visible messages from the chat.
   const envelope = messageEnvelope({
     className: undefined,
     constructor: { name: 'VirtualClass' },
@@ -55,6 +62,10 @@ test('accepts a cross-constructor GramJS-like VirtualClass envelope where instan
 });
 
 test('does not silently drop a media envelope solely because text is empty', () => {
+  // Media-only Telegram messages are valid envelopes even when there is no
+  // caption. Until Mission Control has richer attachment rendering, a clear
+  // placeholder plus capability flags is safer than pretending the message is
+  // missing.
   const normalized = normalizeTelegramMessageEnvelope(messageEnvelope({
     id: 103,
     message: '',
@@ -80,6 +91,9 @@ test('preserves captions on media envelopes', () => {
 });
 
 test('rejects service, deleted, and bad non-message shapes safely', () => {
+  // These are all object-shaped Telegram responses, but they are not normal
+  // user-message envelopes. Keeping them out prevents raw service actions or
+  // unrelated peers from leaking through the text-message normalization path.
   assert.equal(normalizeTelegramMessageEnvelope(messageEnvelope({ className: 'MessageService', action: { className: 'MessageActionChatAddUser' } }), CHAT_ID), null);
   assert.equal(normalizeTelegramMessageEnvelope({ id: 1, className: 'MessageEmpty' }, CHAT_ID), null);
   assert.equal(normalizeTelegramMessageEnvelope({ id: '1', className: 'Message', message: 'bad id' }, CHAT_ID), null);
@@ -97,6 +111,9 @@ test('normalizes message lists while preserving caller-controlled order', () => 
 });
 
 test('resolve helper returns found messages under structural guard and distinguishes non-text from missing', () => {
+  // Reply/thread resolution needs two failure modes: an id can be fetched but
+  // not represent renderable user text (`non_text`), or it can be absent from
+  // GramJS results entirely (`missing`).
   const resolved = resolveTelegramMessageEnvelopes(CHAT_ID, [101, 102, 103], [
     messageEnvelope({ id: 101, message: 'found through structural guard', constructor: { name: 'VirtualClass' } }),
     { id: 102, className: 'MessageService', action: { className: 'MessageActionHistoryClear' } },
