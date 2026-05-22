@@ -55,7 +55,7 @@ function logDialogsResult(options: {
     groupCount: options.groupCount,
     targetChatId: options.targetChatId,
     targetPresent,
-    firstIds: options.dialogs.slice(0, 10).map((dialog) => dialog.id?.toString() ?? null),
+    firstIds: Array.from(options.dialogs.slice(0, 10), (dialog) => dialog.id?.toString() ?? null),
   });
 }
 
