@@ -527,7 +527,7 @@ export function TelegramChatInboxPage() {
         className={`flex h-6 w-6 items-center justify-center rounded-full border text-sm leading-none transition-colors ${markerClassName}`}
         title={markerTitle}
       >
-        {markerState.displayState === 'starred' ? '★' : markerState.displayState === 'read' ? '✓' : showReplyTargetMarker ? '↩' : ''}
+        {markerState.displayState === 'starred' ? '★' : markerState.displayState === 'read' ? '✓' : showReplyTargetMarker ? <span className="translate-y-px">↩</span> : ''}
       </button>
     );
   };

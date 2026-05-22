@@ -401,7 +401,7 @@ export function TelegramChatWidgetContent({ isExpanded, activeMessageFilter, onM
         className={`flex h-5 w-5 items-center justify-center rounded-full border text-xs leading-none transition-colors ${markerClassName}`}
         title={markerTitle}
       >
-        {markerState.displayState === 'starred' ? '★' : markerState.displayState === 'read' ? '✓' : showReplyTargetMarker ? '↩' : ''}
+        {markerState.displayState === 'starred' ? '★' : markerState.displayState === 'read' ? '✓' : showReplyTargetMarker ? <span className="translate-y-px">↩</span> : ''}
       </button>
     );
   };
