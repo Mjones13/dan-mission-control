@@ -71,7 +71,7 @@ export function TelegramMessageBubble({
 
   return (
     <div className={message.isOutgoing ? (compact ? 'ml-6' : 'ml-8') : (compact ? 'mr-6' : 'mr-8')}>
-      <div className={`rounded-lg border transition-[background-color,box-shadow] duration-300 ${compact ? 'px-3 py-2.5' : 'px-3.5 py-2.5'} ${message.isOutgoing ? 'border-[#4f9ce8]/25 bg-[#234b73]' : 'border-[#314154] bg-[#17212f]'} ${highlighted ? 'ring-4 ring-amber-300 shadow-[0_0_0_2px_rgba(0,0,0,0.65),0_0_24px_rgba(251,191,36,0.45)]' : ''}`}>
+      <div className={`rounded-lg border transition-[background-color,box-shadow] duration-300 ${compact ? 'px-3 py-2.5' : 'px-3.5 py-2.5'} ${message.isOutgoing ? 'border-[#4f9ce8]/25 bg-[#234b73]' : 'border-[#314154] bg-[#17212f]'} ${highlighted ? 'shadow-[0_0_0_2px_rgba(88,166,255,0.65),0_0_18px_rgba(88,166,255,0.45)]' : ''}`}>
         <div className="mb-2 flex items-center gap-3 text-[10px] text-[#aab3bd]">
           {senderLabel && <span>{senderLabel}</span>}
           {message.isOutgoing && message.reactionCount > 0 && <span className="text-[#c6d0dc]">✓ ack</span>}
