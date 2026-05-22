@@ -16,6 +16,7 @@ import {
   appendedMessageCount,
   classifyMessageListChange,
   getScrollBottom,
+  scrollTopForCenteredElement,
   scrollTopForPreservedBottom,
   shouldRestoreOlderMessageAnchor,
 } from './telegramScrollAnchoring';
@@ -197,7 +198,9 @@ export function TelegramChatInboxPage() {
     // scroll path on the next render; the short highlight makes the landing
     // point visible after smooth scrolling.
     shouldScrollToBottomRef.current = false;
-    const targetScrollTop = targetEl.offsetTop - ((scrollEl.clientHeight - targetEl.offsetHeight) / 2);
+    const scrollRect = scrollEl.getBoundingClientRect();
+    const targetRect = targetEl.getBoundingClientRect();
+    const targetScrollTop = scrollTopForCenteredElement(scrollEl.scrollTop, scrollRect.top, scrollEl.clientHeight, targetRect.top, targetRect.height);
     scrollEl.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'smooth' });
     setHighlightedMessageId(messageId);
     setOpenChildReplyMenuFor(null);

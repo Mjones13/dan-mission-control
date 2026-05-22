@@ -33,6 +33,16 @@ export function scrollTopForPreservedBottom(scrollHeight: number, scrollBottom: 
   return scrollHeight - scrollBottom - clientHeight;
 }
 
+export function scrollTopForCenteredElement(
+  scrollTop: number,
+  containerTop: number,
+  containerHeight: number,
+  targetTop: number,
+  targetHeight: number,
+): number {
+  return Math.max(0, scrollTop + targetTop - containerTop - ((containerHeight - targetHeight) / 2));
+}
+
 export function restoredScrollTopForHeightDelta(beforeScrollTop: number, beforeScrollHeight: number, afterScrollHeight: number): number {
   return beforeScrollTop + (afterScrollHeight - beforeScrollHeight);
 }
