@@ -156,7 +156,7 @@ async function cleanupClient(client: ManagedTelegramClient | null): Promise<void
   await client.disconnect();
 }
 
-async function ensureConnectedAuthorized(requireAuthorization: boolean): Promise<EnsureResult> {
+async function ensureConnectedAuthorized(requireAuthorization: boolean, requestId?: string): Promise<EnsureResult> {
   // Share one connect/auth attempt across concurrent requests to avoid parallel GramJS handshakes.
   const manager = getManager();
   const existing = manager.client;
@@ -181,7 +181,14 @@ async function ensureConnectedAuthorized(requireAuthorization: boolean): Promise
       reusedClient = false;
     }
 
-    await client.connect();
+    const connectResult = await client.connect();
+    console.log('[tg:client:connect-result]', {
+      requestId,
+      result: connectResult === undefined ? 'undefined' : typeof connectResult,
+      connectedFlag: client.connected ?? null,
+      disconnectedFlag: client.disconnected ?? null,
+      reusedClient,
+    });
     const connectMs = Date.now() - connectStart;
     manager.lastConnectedAt = nowIso();
 
@@ -254,7 +261,7 @@ export async function withTelegramClient<T>(
   manager.lastUsedAt = nowIso();
 
   try {
-    const ensure = await ensureConnectedAuthorized(requireAuthorization);
+    const ensure = await ensureConnectedAuthorized(requireAuthorization, requestId);
     const meta: TelegramClientLeaseMeta = {
       requestId,
       reusedClient: ensure.reusedClient,
@@ -264,6 +271,22 @@ export async function withTelegramClient<T>(
       inFlight: manager.inFlight,
       generation: manager.generation,
     };
+
+    console.log('[tg:client:lease]', {
+      requestId,
+      operation: options.operation,
+      priority: options.priority || 'interactive',
+      generation: manager.generation,
+      reusedClient: ensure.reusedClient,
+      connectStarted: ensure.connectStarted,
+      connectMs: ensure.connectMs,
+      authorizationCheckMs: ensure.authorizationCheckMs,
+      inFlight: manager.inFlight,
+      state: manager.state,
+      hasClient: Boolean(manager.client),
+      appConnectedFlag: ensure.client.connected ?? null,
+      appDisconnectedFlag: ensure.client.disconnected ?? null,
+    });
 
     const limiter = options.priority === 'send' ? manager.sendLimiter : manager.rpcLimiter;
     return await limiter.run(() => fn(ensure.client, meta));

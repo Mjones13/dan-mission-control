@@ -45,13 +45,49 @@ function messageToTextMessage(message: Api.Message, chatId: string): TelegramTex
   };
 }
 
-async function findAuthorizedGroupDialog(client: TelegramClient, chatId: string): Promise<TelegramDialog> {
-  const dialogs = await getGroupDialogsCached(client, { limit: 100 });
+function typeName(value: unknown): string | null {
+  return value && typeof value === 'object' ? value.constructor?.name || null : null;
+}
+
+function logRawMessagesResult(requestId: string | undefined, chatId: string, messages: unknown[]) {
+  const rawTypeCounts = messages.reduce<Record<string, number>>((counts, message) => {
+    const key = typeName(message) || typeof message;
+    counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {});
+  const apiMessages = messages.filter((message): message is Api.Message => message instanceof Api.Message);
+  const ids = apiMessages.map((message) => message.id).filter((id) => Number.isInteger(id));
+
+  console.log('[tg:messages:gramjs-result]', {
+    requestId,
+    chatId,
+    rawCount: messages.length,
+    rawTypeCounts,
+    apiMessageCount: apiMessages.length,
+    textMessageCount: apiMessages.filter((message) => Boolean(message.message)).length,
+    emptyTextCount: apiMessages.filter((message) => !message.message).length,
+    minId: ids.length ? Math.min(...ids) : null,
+    maxId: ids.length ? Math.max(...ids) : null,
+  });
+}
+
+async function findAuthorizedGroupDialog(client: TelegramClient, chatId: string, options: { requestId?: string } = {}): Promise<TelegramDialog> {
+  const dialogs = await getGroupDialogsCached(client, { limit: 100, requestId: options.requestId, targetChatId: chatId });
   const dialog = dialogs.find((candidate) => candidate.id?.toString() === chatId);
 
   if (!dialog) {
     throw new Error('TELEGRAM_GROUP_CHAT_NOT_FOUND');
   }
+
+  console.log('[tg:messages:dialog-selected]', {
+    requestId: options.requestId,
+    chatId,
+    dialogId: dialog.id?.toString() ?? null,
+    isGroup: Boolean(dialog.isGroup),
+    isChannel: Boolean(dialog.isChannel),
+    entityType: typeName(dialog.entity),
+    inputEntityType: typeName(dialog.inputEntity),
+  });
 
   return dialog;
 }
@@ -60,15 +96,16 @@ export interface ListTelegramGroupChatMessagesOptions {
   limit?: number;
   beforeMessageId?: number;
   afterMessageId?: number;
+  requestId?: string;
 }
 
 export async function listTelegramGroupChatMessages(chatId: string, options: ListTelegramGroupChatMessagesOptions = {}): Promise<TelegramTextMessage[]> {
-  const { limit = 50, beforeMessageId, afterMessageId } = options;
+  const { limit = 50, beforeMessageId, afterMessageId, requestId } = options;
 
   return withTelegramClient(
-    { operation: 'telegram.messages.list', priority: 'interactive' },
+    { operation: 'telegram.messages.list', priority: 'interactive', requestId },
     async (client) => {
-      const dialog = await findAuthorizedGroupDialog(client, chatId);
+      const dialog = await findAuthorizedGroupDialog(client, chatId, { requestId });
 
       const messages = await client.getMessages(dialog.inputEntity, afterMessageId
         ? {
@@ -80,6 +117,7 @@ export async function listTelegramGroupChatMessages(chatId: string, options: Lis
             limit,
             offsetId: beforeMessageId || 0,
           });
+      logRawMessagesResult(requestId, chatId, Array.from(messages));
 
       const textMessages = messages
         .filter((message): message is Api.Message => message instanceof Api.Message)
@@ -91,15 +129,25 @@ export async function listTelegramGroupChatMessages(chatId: string, options: Lis
   );
 }
 
-export async function resolveTelegramGroupChatMessages(chatId: string, ids: number[]): Promise<TelegramResolvedTextMessage[]> {
+export async function resolveTelegramGroupChatMessages(chatId: string, ids: number[], options: { requestId?: string } = {}): Promise<TelegramResolvedTextMessage[]> {
   const uniqueIds = Array.from(new Set(ids.filter((id) => Number.isInteger(id) && id > 0))).slice(0, 25);
   if (uniqueIds.length === 0) return [];
+  const { requestId } = options;
 
   return withTelegramClient(
-    { operation: 'telegram.messages.resolve', priority: 'read' },
+    { operation: 'telegram.messages.resolve', priority: 'read', requestId },
     async (client) => {
-      const dialog = await findAuthorizedGroupDialog(client, chatId);
+      const dialog = await findAuthorizedGroupDialog(client, chatId, { requestId });
       const messages = await client.getMessages(dialog.inputEntity, { ids: uniqueIds });
+      console.log('[tg:messages:resolve-result]', {
+        requestId,
+        chatId,
+        requestedCount: uniqueIds.length,
+        rawCount: messages.length,
+        foundIds: Array.from(messages)
+          .filter((item): item is Api.Message => item instanceof Api.Message)
+          .map((item) => item.id),
+      });
       const byId = new Map<number, TelegramResolvedTextMessage>();
 
       for (const item of messages) {

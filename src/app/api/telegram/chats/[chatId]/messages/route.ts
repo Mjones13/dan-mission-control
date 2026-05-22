@@ -11,7 +11,18 @@ interface RouteContext {
   };
 }
 
-function handleTelegramMessageError(error: unknown) {
+function createTelegramMessagesRequestId() {
+  return `tg_msg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function handleTelegramMessageError(error: unknown, requestId?: string) {
+  const safeError = toTelegramSafeError(error);
+  console.error('[tg:messages:route:error]', {
+    requestId,
+    code: safeError.code,
+    message: safeError.message,
+  });
+
   if (error instanceof Error && error.message === 'TELEGRAM_SESSION_REQUIRED') {
     return NextResponse.json({ error: 'Telegram login is required before listing messages.' }, { status: 401 });
   }
@@ -25,24 +36,37 @@ function handleTelegramMessageError(error: unknown) {
     return NextResponse.json({ error: 'Telegram messages must be 4096 characters or fewer.' }, { status: 400 });
   }
 
-  console.error('[Telegram messages] request failed:', error);
-  return NextResponse.json({ error: toTelegramSafeError(error) }, { status: 502 });
+  return NextResponse.json({ error: safeError }, { status: 502 });
 }
 
 export async function GET(request: NextRequest, { params }: RouteContext) {
-  const { searchParams } = new URL(request.url);
+  const requestId = createTelegramMessagesRequestId();
+  const url = new URL(request.url);
+  const { searchParams } = url;
   const query = parseTelegramMessagesQuery(searchParams);
   if ('error' in query) {
     return NextResponse.json({ error: query.error }, { status: 400 });
   }
 
+  console.log('[tg:messages:route:start]', {
+    requestId,
+    port: url.port || process.env.PORT || null,
+    nodeEnv: process.env.NODE_ENV || null,
+    chatId: params.chatId,
+    limit: query.limit,
+    before: query.beforeMessageId ?? null,
+    after: query.afterMessageId ?? null,
+    idsCount: query.ids?.length || 0,
+  });
+
   try {
     const messages = query.ids
-      ? await resolveTelegramGroupChatMessages(params.chatId, query.ids)
-      : await listTelegramGroupChatMessages(params.chatId, query);
+      ? await resolveTelegramGroupChatMessages(params.chatId, query.ids, { requestId })
+      : await listTelegramGroupChatMessages(params.chatId, { ...query, requestId });
+    console.log('[tg:messages:route:success]', { requestId, count: messages.length });
     return NextResponse.json({ messages });
   } catch (error) {
-    return handleTelegramMessageError(error);
+    return handleTelegramMessageError(error, requestId);
   }
 }
 
