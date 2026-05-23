@@ -20,7 +20,7 @@ This is separate from Telegram server read state and Telegram unread counts. It 
 - Do not show the marker button on M Jones's own outgoing messages.
 - Store state locally in browser `localStorage`.
 - Do not add database schema, Telegram API, or server persistence.
-- Cap stored markers per chat to the most recent 100 marked message IDs.
+- Cap stored markers per chat to the most recent 300 marked message IDs.
 - Implement in both standalone `/chat-inbox` and floating widget.
 
 ## User-visible behavior
@@ -59,7 +59,7 @@ For each chat id:
 1. On mark/read:
    - dedupe the message id,
    - append it to the end of that chat's array,
-   - if length exceeds 100, drop oldest ids from the front.
+   - if length exceeds 300, drop oldest ids from the front.
 2. On unmark:
    - remove the message id from that chat's array.
 3. Ignore malformed localStorage content by resetting to an empty object.
@@ -109,7 +109,7 @@ Future refinement:
 - Given a marked message, when M Jones switches chats and returns, the check remains.
 - Given a marked message, when M Jones reloads `/chat-inbox`, the check remains.
 - Given an outgoing M Jones message, no read-marker button appears.
-- Given more than 100 marked message IDs in one chat, the oldest stored IDs are trimmed and the newest 100 remain.
+- Given more than 300 marked message IDs in one chat, the oldest stored IDs are trimmed and the newest 300 remain.
 - Telegram unread counts and server read state are unchanged.
 
 ## Verification plan

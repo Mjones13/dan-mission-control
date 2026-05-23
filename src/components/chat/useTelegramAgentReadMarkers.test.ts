@@ -63,7 +63,7 @@ test('parseTelegramAgentMessageMarkers normalizes missing v2 sections to empty s
   });
 });
 
-test('markTelegramAgentMessageRead dedupes and keeps the newest 100 read markers per chat', () => {
+test('markTelegramAgentMessageRead dedupes and keeps the newest 300 read markers per chat', () => {
   const chatId = '-5112572436';
   let markers: TelegramAgentMessageMarkers = {
     read: { [chatId]: Array.from({ length: MAX_TELEGRAM_AGENT_MARKERS_PER_CHAT }, (_, index) => index + 1) },
@@ -75,13 +75,13 @@ test('markTelegramAgentMessageRead dedupes and keeps the newest 100 read markers
   assert.equal(markers.read[chatId].at(-1), 50);
   assert.equal(markers.read[chatId].filter((id) => id === 50).length, 1);
 
-  markers = markTelegramAgentMessageRead(markers, chatId, 101);
+  markers = markTelegramAgentMessageRead(markers, chatId, 301);
   assert.equal(markers.read[chatId].length, MAX_TELEGRAM_AGENT_MARKERS_PER_CHAT);
   assert.equal(markers.read[chatId][0], 2);
-  assert.equal(markers.read[chatId].at(-1), 101);
+  assert.equal(markers.read[chatId].at(-1), 301);
 });
 
-test('markTelegramAgentMessageStarred dedupes and keeps the newest 100 starred markers per chat', () => {
+test('markTelegramAgentMessageStarred dedupes and keeps the newest 300 starred markers per chat', () => {
   const chatId = '-5112572436';
   let markers: TelegramAgentMessageMarkers = {
     read: {},
@@ -93,10 +93,10 @@ test('markTelegramAgentMessageStarred dedupes and keeps the newest 100 starred m
   assert.equal(markers.starred[chatId].at(-1), 25);
   assert.equal(markers.starred[chatId].filter((id) => id === 25).length, 1);
 
-  markers = markTelegramAgentMessageStarred(markers, chatId, 101);
+  markers = markTelegramAgentMessageStarred(markers, chatId, 301);
   assert.equal(markers.starred[chatId].length, MAX_TELEGRAM_AGENT_MARKERS_PER_CHAT);
   assert.equal(markers.starred[chatId][0], 2);
-  assert.equal(markers.starred[chatId].at(-1), 101);
+  assert.equal(markers.starred[chatId].at(-1), 301);
 });
 
 test('cycleTelegramAgentMessageMarker cycles none to read-only', () => {
