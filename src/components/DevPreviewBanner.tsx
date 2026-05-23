@@ -46,7 +46,7 @@ export default function DevPreviewBanner() {
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[60]">
       <aside
-        className="pointer-events-auto w-full border-t border-mc-accent/40 bg-mc-bg-secondary/95 px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] text-xs text-mc-text shadow-[0_-18px_45px_rgba(0,0,0,0.35)] backdrop-blur md:px-6 md:text-sm"
+        className="pointer-events-auto w-full border-t border-mc-accent/40 bg-mc-bg-secondary/95 px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] text-[15px] text-mc-text shadow-[0_-18px_45px_rgba(0,0,0,0.35)] backdrop-blur md:px-6 md:text-[17px]"
         aria-label="Dev preview identity"
       >
         <div className="mx-auto flex max-w-screen-2xl items-start gap-3">
@@ -71,14 +71,14 @@ export default function DevPreviewBanner() {
                 <span className="font-semibold text-mc-text">{headerTitle}</span>
               ) : null}
               {secondaryParts.length > 0 ? (
-                <span className="font-mono text-[11px] text-mc-text-muted">
+                <span className="font-mono text-[14px] text-mc-text-muted">
                   {secondaryParts.join(' · ')}
                 </span>
               ) : null}
             </div>
             <p className="max-w-5xl leading-relaxed text-mc-text">{primaryText}</p>
             {metadata.bullets.length > 0 ? (
-              <ul className="grid max-w-6xl gap-1 text-[11px] leading-relaxed text-mc-text-muted sm:grid-cols-2 lg:grid-cols-4">
+              <ul className="grid max-w-6xl gap-1 text-[14px] leading-relaxed text-mc-text-muted sm:grid-cols-2 lg:grid-cols-4">
                 {metadata.bullets.map(bullet => (
                   <li key={bullet} className="rounded-md bg-mc-bg/70 px-2 py-1">
                     {bullet}
@@ -91,7 +91,7 @@ export default function DevPreviewBanner() {
           <button
             type="button"
             onClick={dismiss}
-            className="shrink-0 rounded-md px-2 py-1 text-lg leading-none text-mc-text-muted transition-colors hover:bg-mc-bg hover:text-mc-text focus:outline-none focus:ring-2 focus:ring-mc-accent/70"
+            className="shrink-0 rounded-md px-2 py-1 text-[21px] leading-none text-mc-text-muted transition-colors hover:bg-mc-bg hover:text-mc-text focus:outline-none focus:ring-2 focus:ring-mc-accent/70"
             aria-label="Dismiss dev preview banner"
           >
             ×
