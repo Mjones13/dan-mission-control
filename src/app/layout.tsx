@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { JetBrains_Mono } from 'next/font/google';
 import DemoBanner from '@/components/DemoBanner';
+import DevPreviewBanner from '@/components/DevPreviewBanner';
 import { ToastProvider } from '@/components/Toast';
 import { ChatProvider } from '@/components/chat/ChatProvider';
 
@@ -30,6 +31,7 @@ export default function RootLayout({
       <body className={`${jetbrainsMono.className} bg-mc-bg text-mc-text min-h-screen`}>
         <ToastProvider>
           <DemoBanner />
+          <DevPreviewBanner />
           <ChatProvider>
             {children}
           </ChatProvider>
