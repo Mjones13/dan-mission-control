@@ -20,12 +20,12 @@ const LIMITS = {
   id: 96,
   branch: 120,
   title: 120,
-  summary: 220,
-  bullet: 120,
+  summary: 720,
+  bullet: 280,
   port: 12,
 };
 
-const MAX_BULLETS = 3;
+const MAX_BULLETS = 4;
 
 function normalizeString(value: string | undefined, maxLength: number): string | undefined {
   const trimmed = value?.trim();
