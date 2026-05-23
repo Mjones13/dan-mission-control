@@ -119,6 +119,7 @@ interface ThreadModalProps {
   onClose(): void;
   onLoadEarlier(): void;
   onReply(message: TelegramReplyContextMessage): void;
+  onJumpToMessage?(message: TelegramReplyContextMessage): void;
   chatTitle?: string;
 }
 
@@ -132,6 +133,7 @@ export function TelegramReplyContextModal({
   onClose,
   onLoadEarlier,
   onReply,
+  onJumpToMessage,
   chatTitle,
 }: ThreadModalProps) {
   if (!open) return null;
@@ -175,6 +177,8 @@ export function TelegramReplyContextModal({
           )}
           {messages.map((message) => {
             const displayLabel = message.status === 'loaded' ? telegramDisplaySenderLabel(message, chatTitle) : 'Original message';
+            const timestampText = formatTime(message.sentAt);
+            const canJumpToMessage = message.status === 'loaded' && Boolean(timestampText) && Boolean(onJumpToMessage);
 
             return (
               <div key={`${message.id}-${message.status}`} className={message.isOutgoing ? 'ml-8' : 'mr-8'}>
@@ -185,7 +189,19 @@ export function TelegramReplyContextModal({
                     {message.status !== 'loaded' && <span className="text-[#91a0af]">{message.status === 'non_text' ? 'non-text' : 'unavailable'}</span>}
                     <span className="flex-1" />
                     {message.status === 'loaded' && <button onClick={() => onReply(message)} className="hover:text-mc-accent">Reply</button>}
-                    <span className="text-[#91a0af]">{formatTime(message.sentAt)}</span>
+                    {canJumpToMessage ? (
+                      <button
+                        type="button"
+                        onClick={() => onJumpToMessage?.(message)}
+                        aria-label={`Show message from ${timestampText} in chat context`}
+                        title="Show message in chat context"
+                        className="text-[#91a0af] underline-offset-2 transition-colors hover:text-mc-accent hover:underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-mc-accent"
+                      >
+                        {timestampText}
+                      </button>
+                    ) : (
+                      <span className="text-[#91a0af]">{timestampText}</span>
+                    )}
                   </div>
                   <LinkifiedText className="whitespace-pre-wrap text-sm leading-relaxed text-[#fbfdff]">{message.text}</LinkifiedText>
                 </div>

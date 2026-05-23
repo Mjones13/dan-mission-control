@@ -11,7 +11,7 @@ import { playTelegramSentSound, primeTelegramSentSound } from '@/lib/audio/teleg
 import { canStartTelegramSend, recoverFailedTelegramDraft, shouldSendTelegramComposerFromKeyDown, telegramSendButtonClassName } from './telegramComposerSendState';
 import { useTelegramReplyContext } from './useTelegramReplyContext';
 import { TelegramMessageBubble, TelegramReplyContextModal } from './TelegramReplyContextViews';
-import { createLoadedDirectRepliesByParentId, telegramDisplaySenderLabel } from './telegramReplyContext';
+import { createLoadedDirectRepliesByParentId, telegramDisplaySenderLabel, type TelegramReplyContextMessage } from './telegramReplyContext';
 import { filterTelegramMessagesForView, type TelegramMessageViewFilter } from './telegramMessageViews';
 import { groupTelegramChatsByPriority, shouldRenderTelegramChatPrioritySeparator } from './telegramChatPriorityGroups';
 import { getActiveReplyTargetId, shouldShowReplyTargetMarker } from './telegramReplyTargetMarker';
@@ -82,6 +82,8 @@ export function TelegramChatInboxPage() {
   const [replyingTo, setReplyingTo] = useState<TelegramMessage | null>(null);
   const [activeMessageFilter, setActiveMessageFilter] = useState<TelegramMessageViewFilter>('all');
   const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
+  const [pendingThreadContextJumpId, setPendingThreadContextJumpId] = useState<number | null>(null);
+  const [threadContextJumpError, setThreadContextJumpError] = useState<string | null>(null);
   const [openChildReplyMenuFor, setOpenChildReplyMenuFor] = useState<number | null>(null);
   const { getMarkerState, markReadMarker, markReadAndStarredMarker, markReplyParentsRead, cycleMarker } = useTelegramAgentReadMarkers();
   const replyContext = useTelegramReplyContext({ chatId: selectedChatId, messages });
@@ -394,7 +396,7 @@ export function TelegramChatInboxPage() {
     const scrollEl = scrollRef.current;
     const selector = `[data-telegram-message-id="${messageId}"]`;
     const targetEl = scrollEl?.querySelector<HTMLElement>(selector);
-    if (!scrollEl || !targetEl || !selectedChatId) return;
+    if (!scrollEl || !targetEl || !selectedChatId) return false;
 
     // Manual jumps should not be overridden by the normal "near bottom" auto
     // scroll path on the next render; the short highlight makes the landing
@@ -426,7 +428,22 @@ export function TelegramChatInboxPage() {
       bottomLockRef.current = isWithinBottomLockThreshold(distanceFromBottom);
       if (selectedChatId) setChatScrollTop(selectedChatId, scrollEl.scrollTop);
     }, 0);
+    return true;
   };
+
+  useEffect(() => {
+    if (pendingThreadContextJumpId === null) return;
+    if (!renderedMessages.some((message) => message.id === pendingThreadContextJumpId)) return;
+
+    const messageId = pendingThreadContextJumpId;
+    setPendingThreadContextJumpId(null);
+    const frame = window.requestAnimationFrame(() => {
+      if (!jumpToMessage(messageId)) {
+        setThreadContextJumpError('That message is not visible in the current chat view.');
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [pendingThreadContextJumpId, renderedMessages]);
 
   const jumpToLatestMessages = () => {
     const el = scrollRef.current;
@@ -488,6 +505,35 @@ export function TelegramChatInboxPage() {
     // replies still use the normal Reply button flow.
     replyContext.closeThread();
     setReplyingTo(null);
+    setThreadContextJumpError(null);
+  };
+
+  const handleJumpToThreadMessage = (message: TelegramReplyContextMessage) => {
+    if (!selectedChatId || message.status !== 'loaded' || message.chatId !== selectedChatId) {
+      setThreadContextJumpError('That message is not visible in the current chat view.');
+      return;
+    }
+
+    if (!visibleMessages.some((visibleMessage) => visibleMessage.id === message.id)) {
+      setThreadContextJumpError('That message is not loaded in the current chat view.');
+      return;
+    }
+
+    setThreadContextJumpError(null);
+    replyContext.closeThread();
+    setReplyingTo(null);
+
+    if (!renderedMessages.some((renderedMessage) => renderedMessage.id === message.id)) {
+      setPendingThreadContextJumpId(message.id);
+      setActiveMessageFilter('all');
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      if (!jumpToMessage(message.id)) {
+        setThreadContextJumpError('That message is not visible in the current chat view.');
+      }
+    });
   };
 
   const renderMessageMarkerButton = (chatId: string, messageId: number) => {
@@ -833,10 +879,11 @@ export function TelegramChatInboxPage() {
           loading={replyContext.threadLoading}
           loadingEarlier={replyContext.threadLoadingEarlier}
           hasEarlier={replyContext.threadHasEarlier}
-          error={replyContext.threadError}
+          error={threadContextJumpError || replyContext.threadError}
           onClose={handleCloseThread}
           onLoadEarlier={() => void replyContext.loadEarlierInThread()}
           onReply={handleReplyFromThread}
+          onJumpToMessage={handleJumpToThreadMessage}
           chatTitle={selectedChatTitle}
         />
       </div>
