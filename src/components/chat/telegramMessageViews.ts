@@ -1,3 +1,4 @@
+import { isTelegramBridgeStatusMessage } from '@/lib/telegram/bridge-status';
 import type { TelegramMessage } from './useTelegramChatInbox';
 import type { TelegramAgentMarkerState, TelegramAgentMessageMarkers } from './useTelegramAgentReadMarkers';
 import { getTelegramAgentMessageMarkerState } from './useTelegramAgentReadMarkers';
@@ -9,13 +10,14 @@ export function isTelegramMessageStarredForView(markerState: Pick<TelegramAgentM
 }
 
 export function isTelegramMessageUnreadForMissionControl(
-  message: Pick<TelegramMessage, 'isOutgoing'>,
+  message: Pick<TelegramMessage, 'isOutgoing' | 'text'>,
   markerState: Pick<TelegramAgentMarkerState, 'isRead' | 'isStarred'>,
 ): boolean {
   // Mission Control unread is a local triage state, not Telegram's server-side
-  // unread count: outgoing messages and starred follow-ups are hidden from the
-  // unread queue even if Telegram still considers the chat unread.
-  return !message.isOutgoing && !markerState.isRead && !markerState.isStarred;
+  // unread count: outgoing messages, starred follow-ups, and low-value bridge
+  // status/noise messages are hidden from the unread queue even if Telegram
+  // still considers the chat unread.
+  return !message.isOutgoing && !markerState.isRead && !markerState.isStarred && !isTelegramBridgeStatusMessage(message.text);
 }
 
 export function filterTelegramMessagesForView(
