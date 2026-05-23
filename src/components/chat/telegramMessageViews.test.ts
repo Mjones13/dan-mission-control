@@ -55,6 +55,19 @@ test('filterTelegramMessagesForViewWithMarkers returns incoming locally unhandle
   );
 });
 
+test('filterTelegramMessagesForViewWithMarkers excludes bridge status noise from unread', () => {
+  const messages = [
+    message(1, { text: 'Brining...' }),
+    message(2, { text: '🔧 Tool: read' }),
+    message(3, { text: 'Normal human follow-up' }),
+  ];
+
+  assert.deepEqual(
+    filterTelegramMessagesForViewWithMarkers(messages, 'chat-1', 'unread', { read: {}, starred: {} }).map((item) => item.id),
+    [3],
+  );
+});
+
 test('filterTelegramMessagesForViewWithMarkers pairs M Jones-authored loaded reply parents immediately before unread replies', () => {
   const messages = [
     message(1, { isOutgoing: true }),
