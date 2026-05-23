@@ -82,3 +82,48 @@ test('TelegramReplyContextModal renders a one-line Thread header and thread ack 
   assert.doesNotMatch(html, /Telegram reply chain/);
   assert.match(html, />✓ ack<\/span>/);
 });
+
+test('TelegramReplyContextModal renders loaded timestamps as jump buttons when a jump handler is supplied', async () => {
+  const { TelegramReplyContextModal } = await import('./TelegramReplyContextViews');
+  const html = renderToStaticMarkup(
+    <TelegramReplyContextModal
+      open
+      title="Thread"
+      messages={[preview({ sentAt: new Date('2026-05-22T20:24:00Z').toISOString() })]}
+      loading={false}
+      loadingEarlier={false}
+      hasEarlier={false}
+      error={null}
+      onClose={() => undefined}
+      onLoadEarlier={() => undefined}
+      onReply={() => undefined}
+      onJumpToMessage={() => undefined}
+    />
+  );
+
+  assert.match(html, /<button[^>]+aria-label="Show message from [^"]+ in chat context"/);
+  assert.match(html, /title="Show message in chat context"/);
+  assert.match(html, /hover:underline/);
+});
+
+test('TelegramReplyContextModal keeps unavailable timestamps passive even with a jump handler', async () => {
+  const { TelegramReplyContextModal } = await import('./TelegramReplyContextViews');
+  const html = renderToStaticMarkup(
+    <TelegramReplyContextModal
+      open
+      title="Thread"
+      messages={[preview({ status: 'missing', sentAt: new Date('2026-05-22T20:24:00Z').toISOString() })]}
+      loading={false}
+      loadingEarlier={false}
+      hasEarlier={false}
+      error={null}
+      onClose={() => undefined}
+      onLoadEarlier={() => undefined}
+      onReply={() => undefined}
+      onJumpToMessage={() => undefined}
+    />
+  );
+
+  assert.doesNotMatch(html, /Show message from/);
+  assert.match(html, /unavailable/);
+});

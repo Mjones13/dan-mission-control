@@ -10,6 +10,7 @@ import { playTelegramSentSound, primeTelegramSentSound } from '@/lib/audio/teleg
 import { canStartTelegramSend, recoverFailedTelegramDraft, shouldSendTelegramComposerFromKeyDown, telegramSendButtonClassName } from './telegramComposerSendState';
 import { useTelegramReplyContext } from './useTelegramReplyContext';
 import { TelegramMessageBubble, TelegramReplyContextModal } from './TelegramReplyContextViews';
+import type { TelegramReplyContextMessage } from './telegramReplyContext';
 import { filterTelegramMessagesForView, type TelegramMessageViewFilter } from './telegramMessageViews';
 import { groupTelegramChatsByPriority, shouldRenderTelegramChatPrioritySeparator } from './telegramChatPriorityGroups';
 import { getActiveReplyTargetId, shouldShowReplyTargetMarker } from './telegramReplyTargetMarker';
@@ -21,6 +22,7 @@ import {
   isWithinBottomLockThreshold,
   isWithinLooseNearBottomThreshold,
   restoredScrollTopForHeightDelta,
+  scrollTopForCenteredElement,
   scrollTopForPreservedBottom,
   shouldRestoreOlderMessageAnchor,
 } from './telegramScrollAnchoring';
@@ -37,6 +39,17 @@ type ScrollSnapshot = {
   scrollTop: number;
   scrollHeight: number;
 };
+
+type ManualReplyJumpGuard = {
+  chatId: string;
+  messageId: number;
+  targetScrollTop: number;
+  startedAt: number;
+};
+
+const MANUAL_REPLY_JUMP_TARGET_THRESHOLD_PX = 8;
+const MANUAL_REPLY_JUMP_MAX_MS = 1000;
+const MESSAGE_HIGHLIGHT_DURATION_MS = 2400;
 
 function getScrollSnapshot(el: HTMLDivElement): ScrollSnapshot {
   return { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight };
@@ -66,6 +79,9 @@ export function TelegramChatWidgetContent({ isExpanded, activeMessageFilter, onM
   } = useTelegramChatInbox();
   const [composerText, setComposerText] = useState('');
   const [replyingTo, setReplyingTo] = useState<TelegramMessage | null>(null);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
+  const [pendingThreadContextJumpId, setPendingThreadContextJumpId] = useState<number | null>(null);
+  const [threadContextJumpError, setThreadContextJumpError] = useState<string | null>(null);
   const { getMarkerState, markReadMarker, markReadAndStarredMarker, markReplyParentsRead, cycleMarker } = useTelegramAgentReadMarkers();
   const replyContext = useTelegramReplyContext({ chatId: selectedChat?.id || null, messages });
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -77,6 +93,9 @@ export function TelegramChatWidgetContent({ isExpanded, activeMessageFilter, onM
   const scrollStateRef = useRef<{ chatId: string | null; messageIds: number[] }>({ chatId: null, messageIds: [] });
   const preRenderScrollSnapshotRef = useRef<ScrollSnapshot | null>(null);
   const loadOlderAnchorPendingRef = useRef<{ chatId: string; scrollBottom: number } | null>(null);
+  const manualReplyJumpGuardRef = useRef<ManualReplyJumpGuard | null>(null);
+  const manualReplyJumpFrameRef = useRef<number | null>(null);
+  const manualReplyJumpTimeoutRef = useRef<number | null>(null);
   const [unseenNewMessageCount, setUnseenNewMessageCount] = useState(0);
   const previousChatIdRef = useRef<string | null>(null);
   const trimmedComposerText = composerText.trim();
@@ -93,6 +112,66 @@ export function TelegramChatWidgetContent({ isExpanded, activeMessageFilter, onM
   }, [activeMessageFilter, getMarkerState, selectedChat, visibleMessages]);
   const chatPriorityGroups = useMemo(() => groupTelegramChatsByPriority(chats), [chats]);
   const showChatPrioritySeparator = shouldRenderTelegramChatPrioritySeparator(chatPriorityGroups);
+
+  function cancelManualReplyJumpChecks() {
+    if (manualReplyJumpFrameRef.current !== null) {
+      window.cancelAnimationFrame(manualReplyJumpFrameRef.current);
+      manualReplyJumpFrameRef.current = null;
+    }
+    if (manualReplyJumpTimeoutRef.current !== null) {
+      window.clearTimeout(manualReplyJumpTimeoutRef.current);
+      manualReplyJumpTimeoutRef.current = null;
+    }
+  }
+
+  function clearManualReplyJumpGuard() {
+    manualReplyJumpGuardRef.current = null;
+    cancelManualReplyJumpChecks();
+  }
+
+  function isManualReplyJumpComplete(guard: ManualReplyJumpGuard, el: HTMLDivElement) {
+    return (
+      Math.abs(el.scrollTop - guard.targetScrollTop) <= MANUAL_REPLY_JUMP_TARGET_THRESHOLD_PX ||
+      window.performance.now() - guard.startedAt >= MANUAL_REPLY_JUMP_MAX_MS
+    );
+  }
+
+  function trackManualReplyJump(scrollEl: HTMLDivElement, guard: ManualReplyJumpGuard) {
+    cancelManualReplyJumpChecks();
+    manualReplyJumpGuardRef.current = guard;
+
+    const check = () => {
+      const currentGuard = manualReplyJumpGuardRef.current;
+      if (
+        !currentGuard ||
+        currentGuard.chatId !== guard.chatId ||
+        currentGuard.messageId !== guard.messageId
+      ) {
+        manualReplyJumpFrameRef.current = null;
+        return;
+      }
+      if (isManualReplyJumpComplete(currentGuard, scrollEl)) {
+        clearManualReplyJumpGuard();
+        return;
+      }
+      manualReplyJumpFrameRef.current = window.requestAnimationFrame(check);
+    };
+
+    manualReplyJumpFrameRef.current = window.requestAnimationFrame(check);
+    manualReplyJumpTimeoutRef.current = window.setTimeout(() => {
+      const currentGuard = manualReplyJumpGuardRef.current;
+      if (
+        currentGuard?.chatId === guard.chatId &&
+        currentGuard.messageId === guard.messageId
+      ) {
+        clearManualReplyJumpGuard();
+      }
+    }, MANUAL_REPLY_JUMP_MAX_MS);
+  }
+
+  useEffect(() => {
+    return () => clearManualReplyJumpGuard();
+  }, []);
 
   useEffect(() => {
     const nextChatId = selectedChat?.id || null;
@@ -127,6 +206,11 @@ export function TelegramChatWidgetContent({ isExpanded, activeMessageFilter, onM
     const beforeSnapshot = preRenderScrollSnapshotRef.current;
     const wasBottomLocked = bottomLockRef.current;
 
+    const manualReplyJumpGuard = manualReplyJumpGuardRef.current;
+    const manualReplyJumpInProgress =
+      manualReplyJumpGuard?.chatId === selectedChat.id &&
+      !isManualReplyJumpComplete(manualReplyJumpGuard, el);
+
     if (chatChanged) {
       if (selectedCacheEntry?.scrollTop !== undefined && currentMessageIds.length > 0) {
         el.scrollTop = selectedCacheEntry.scrollTop;
@@ -137,6 +221,10 @@ export function TelegramChatWidgetContent({ isExpanded, activeMessageFilter, onM
       }
       isNearBottomRef.current = isWithinLooseNearBottomThreshold(getScrollBottom(el.scrollHeight, el.scrollTop, el.clientHeight));
       setUnseenNewMessageCount(0);
+    } else if (manualReplyJumpInProgress) {
+      shouldScrollToBottomRef.current = false;
+      bottomLockRef.current = false;
+      isNearBottomRef.current = false;
     } else if (
       shouldRestoreOlderMessageAnchor(
         messageListChange,
@@ -201,6 +289,12 @@ export function TelegramChatWidgetContent({ isExpanded, activeMessageFilter, onM
       preRenderScrollSnapshotRef.current = getScrollSnapshot(el);
     };
   }, [renderedMessages, selectedCacheEntry?.scrollTop, selectedChat, setChatScrollTop]);
+
+  useEffect(() => {
+    if (highlightedMessageId === null) return;
+    const timeout = window.setTimeout(() => setHighlightedMessageId(null), MESSAGE_HIGHLIGHT_DURATION_MS);
+    return () => window.clearTimeout(timeout);
+  }, [highlightedMessageId]);
 
   useEffect(() => {
     if (!selectedChat) return;
@@ -270,6 +364,55 @@ export function TelegramChatWidgetContent({ isExpanded, activeMessageFilter, onM
     }
   };
 
+  const jumpToMessage = (messageId: number) => {
+    const scrollEl = scrollRef.current;
+    const selector = `[data-telegram-message-id="${messageId}"]`;
+    const targetEl = scrollEl?.querySelector<HTMLElement>(selector);
+    if (!scrollEl || !targetEl || !selectedChat) return false;
+
+    shouldScrollToBottomRef.current = false;
+    bottomLockRef.current = false;
+    const scrollRect = scrollEl.getBoundingClientRect();
+    const targetRect = targetEl.getBoundingClientRect();
+    const targetScrollTop = scrollTopForCenteredElement(
+      scrollEl.scrollTop,
+      scrollRect.top,
+      scrollEl.clientHeight,
+      targetRect.top,
+      targetRect.height,
+    );
+    const normalizedTargetScrollTop = Math.max(0, targetScrollTop);
+    trackManualReplyJump(scrollEl, {
+      chatId: selectedChat.id,
+      messageId,
+      targetScrollTop: normalizedTargetScrollTop,
+      startedAt: window.performance.now(),
+    });
+    scrollEl.scrollTo({ top: normalizedTargetScrollTop, behavior: 'smooth' });
+    setHighlightedMessageId(messageId);
+    window.setTimeout(() => {
+      const distanceFromBottom = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight;
+      isNearBottomRef.current = isWithinLooseNearBottomThreshold(distanceFromBottom);
+      bottomLockRef.current = isWithinBottomLockThreshold(distanceFromBottom);
+      if (selectedChat) setChatScrollTop(selectedChat.id, scrollEl.scrollTop);
+    }, 0);
+    return true;
+  };
+
+  useEffect(() => {
+    if (pendingThreadContextJumpId === null) return;
+    if (!renderedMessages.some((message) => message.id === pendingThreadContextJumpId)) return;
+
+    const messageId = pendingThreadContextJumpId;
+    setPendingThreadContextJumpId(null);
+    const frame = window.requestAnimationFrame(() => {
+      if (!jumpToMessage(messageId)) {
+        setThreadContextJumpError('That message is not visible in the current chat view.');
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [pendingThreadContextJumpId, renderedMessages]);
+
   useEffect(() => {
     if (!replyContext.threadAnchor || !replyContext.threadReplyTarget) return;
     // While context is open, the shared composer should continue the visible
@@ -316,6 +459,35 @@ export function TelegramChatWidgetContent({ isExpanded, activeMessageFilter, onM
     // replies still use the normal Reply button flow.
     replyContext.closeThread();
     setReplyingTo(null);
+    setThreadContextJumpError(null);
+  };
+
+  const handleJumpToThreadMessage = (message: TelegramReplyContextMessage) => {
+    if (!selectedChat || message.status !== 'loaded' || message.chatId !== selectedChat.id) {
+      setThreadContextJumpError('That message is not visible in the current chat view.');
+      return;
+    }
+
+    if (!visibleMessages.some((visibleMessage) => visibleMessage.id === message.id)) {
+      setThreadContextJumpError('That message is not loaded in the current chat view.');
+      return;
+    }
+
+    setThreadContextJumpError(null);
+    replyContext.closeThread();
+    setReplyingTo(null);
+
+    if (!renderedMessages.some((renderedMessage) => renderedMessage.id === message.id)) {
+      setPendingThreadContextJumpId(message.id);
+      onMessageFilterChange('all');
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      if (!jumpToMessage(message.id)) {
+        setThreadContextJumpError('That message is not visible in the current chat view.');
+      }
+    });
   };
 
   const renderChatRow = (chat: (typeof chats)[number]) => (
@@ -455,18 +627,20 @@ export function TelegramChatWidgetContent({ isExpanded, activeMessageFilter, onM
               </div>
             )}
             {renderedMessages.map((message) => (
-              <TelegramMessageBubble
-                key={message.id}
-                message={message}
-                preview={replyContext.inlinePreviewByMessageId[message.id]}
-                compact
-                canOpenThread={replyContext.canOpenThread(message)}
-                onOpenThread={(threadMessage) => void replyContext.openThread(threadMessage)}
-                onReply={setReplyingTo}
-                showReadMarker={!message.isOutgoing && Boolean(selectedChat)}
-                readMarkerNode={selectedChat ? renderMessageMarkerButton(selectedChat.id, message.id) : undefined}
-                chatTitle={selectedChat?.title}
-              />
+              <div key={message.id} data-message-id={message.id} data-telegram-message-id={message.id}>
+                <TelegramMessageBubble
+                  message={message}
+                  preview={replyContext.inlinePreviewByMessageId[message.id]}
+                  compact
+                  canOpenThread={replyContext.canOpenThread(message)}
+                  onOpenThread={(threadMessage) => void replyContext.openThread(threadMessage)}
+                  onReply={setReplyingTo}
+                  showReadMarker={!message.isOutgoing && Boolean(selectedChat)}
+                  readMarkerNode={selectedChat ? renderMessageMarkerButton(selectedChat.id, message.id) : undefined}
+                  highlighted={highlightedMessageId === message.id}
+                  chatTitle={selectedChat?.title}
+                />
+              </div>
             ))}
           </div>
           {unseenNewMessageCount > 0 && (
@@ -534,10 +708,11 @@ export function TelegramChatWidgetContent({ isExpanded, activeMessageFilter, onM
         loading={replyContext.threadLoading}
         loadingEarlier={replyContext.threadLoadingEarlier}
         hasEarlier={replyContext.threadHasEarlier}
-        error={replyContext.threadError}
+        error={threadContextJumpError || replyContext.threadError}
         onClose={handleCloseThread}
         onLoadEarlier={() => void replyContext.loadEarlierInThread()}
         onReply={handleReplyFromThread}
+        onJumpToMessage={handleJumpToThreadMessage}
         chatTitle={selectedChat?.title}
       />
     </div>
