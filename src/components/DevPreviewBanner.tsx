@@ -49,7 +49,7 @@ export default function DevPreviewBanner() {
         className="pointer-events-auto w-full border-t border-mc-accent/40 bg-mc-bg-secondary/95 px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] text-[15px] text-mc-text shadow-[0_-18px_45px_rgba(0,0,0,0.35)] backdrop-blur md:px-6 md:text-[17px]"
         aria-label="Dev preview identity"
       >
-        <div className="mx-auto flex max-w-screen-2xl items-start gap-3">
+        <div className="mx-auto flex max-w-5xl items-start justify-center gap-3">
           {metadata.url ? (
             <a
               href={metadata.url}
@@ -65,7 +65,7 @@ export default function DevPreviewBanner() {
             </span>
           )}
 
-          <div className="min-w-0 flex-1 space-y-1">
+          <div className="min-w-0 max-w-4xl flex-1 space-y-1">
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
               {headerTitle ? (
                 <span className="font-semibold text-mc-text">{headerTitle}</span>
@@ -78,10 +78,10 @@ export default function DevPreviewBanner() {
             </div>
             <p className="max-w-5xl leading-relaxed text-mc-text">{primaryText}</p>
             {metadata.bullets.length > 0 ? (
-              <ul className="grid max-w-6xl gap-1 text-[14px] leading-relaxed text-mc-text-muted sm:grid-cols-2 lg:grid-cols-4">
+              <ul className="max-w-5xl space-y-1 text-[14px] leading-relaxed text-mc-text-muted">
                 {metadata.bullets.map(bullet => (
-                  <li key={bullet} className="rounded-md bg-mc-bg/70 px-2 py-1">
-                    {bullet}
+                  <li key={bullet} className="rounded-md bg-mc-bg/70 py-1">
+                    • {bullet}
                   </li>
                 ))}
               </ul>
