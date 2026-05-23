@@ -5,7 +5,7 @@ import type { TelegramMessage } from './useTelegramChatInbox';
 
 export const TELEGRAM_AGENT_MESSAGE_MARKERS_STORAGE_KEY = 'mission-control.telegram.agentMessageMarkers.v2';
 export const TELEGRAM_AGENT_READ_MARKERS_STORAGE_KEY = 'mission-control.telegram.agentReadMarkers.v1';
-export const MAX_TELEGRAM_AGENT_MARKERS_PER_CHAT = 100;
+export const MAX_TELEGRAM_AGENT_MARKERS_PER_CHAT = 300;
 export const MAX_TELEGRAM_AGENT_READ_MARKERS_PER_CHAT = MAX_TELEGRAM_AGENT_MARKERS_PER_CHAT;
 
 export type TelegramAgentReadMarkers = Record<string, number[]>;
