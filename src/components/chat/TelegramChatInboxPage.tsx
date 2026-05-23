@@ -9,6 +9,7 @@ import { getTelegramChatEmoji, isTelegramBridgeStatusText, visibleTelegramMessag
 import { useTelegramAgentReadMarkers } from './useTelegramAgentReadMarkers';
 import { playTelegramSentSound, primeTelegramSentSound } from '@/lib/audio/telegramSentSound';
 import { canStartTelegramSend, recoverFailedTelegramDraft, shouldSendTelegramComposerFromKeyDown, telegramSendButtonClassName } from './telegramComposerSendState';
+import { focusTelegramComposerAfterReply } from './telegramComposerFocus';
 import { useTelegramReplyContext } from './useTelegramReplyContext';
 import { TelegramMessageBubble, TelegramReplyContextModal } from './TelegramReplyContextViews';
 import { createLoadedDirectRepliesByParentId, telegramDisplaySenderLabel, type TelegramReplyContextMessage } from './telegramReplyContext';
@@ -87,6 +88,7 @@ export function TelegramChatInboxPage() {
   const [openChildReplyMenuFor, setOpenChildReplyMenuFor] = useState<number | null>(null);
   const { getMarkerState, markReadMarker, markReadAndStarredMarker, markReplyParentsRead, cycleMarker } = useTelegramAgentReadMarkers();
   const replyContext = useTelegramReplyContext({ chatId: selectedChatId, messages });
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldScrollToBottomRef = useRef(true);
   const bottomLockRef = useRef(true);
@@ -498,6 +500,12 @@ export function TelegramChatInboxPage() {
 
   const handleReplyFromThread = (message: TelegramMessage) => {
     setReplyingTo(message);
+    focusTelegramComposerAfterReply(composerRef.current);
+  };
+
+  const handleReplyFromMessage = (message: TelegramMessage) => {
+    setReplyingTo(message);
+    focusTelegramComposerAfterReply(composerRef.current);
   };
 
   const handleCloseThread = () => {
@@ -813,7 +821,7 @@ export function TelegramChatInboxPage() {
                             preview={replyContext.inlinePreviewByMessageId[message.id]}
                             canOpenThread={replyContext.canOpenThread(message)}
                             onOpenThread={(threadMessage) => void replyContext.openThread(threadMessage)}
-                            onReply={setReplyingTo}
+                            onReply={handleReplyFromMessage}
                             showReadMarker={!message.isOutgoing && Boolean(selectedChatId)}
                             readMarkerNode={selectedChatId ? renderMessageMarkerButton(selectedChatId, message.id) : undefined}
                             childNavigationNode={renderChildNavigationButton(message, directReplies)}
@@ -843,6 +851,7 @@ export function TelegramChatInboxPage() {
                   )}
                   <div className="flex gap-2">
                     <textarea
+                      ref={composerRef}
                       value={composerText}
                       onChange={(event) => setComposerText(event.target.value)}
                       onKeyDown={(event) => {
