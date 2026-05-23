@@ -30,4 +30,5 @@ test('shouldShowReplyTargetMarker only shows for the active empty marker outside
   assert.equal(shouldShowReplyTargetMarker(2, 2, 'read', 'all'), false);
   assert.equal(shouldShowReplyTargetMarker(2, 2, 'starred', 'all'), false);
   assert.equal(shouldShowReplyTargetMarker(2, 2, 'none', 'unread'), false);
+  assert.equal(shouldShowReplyTargetMarker(2, 2, 'none', 'mine'), true);
 });

@@ -3,7 +3,12 @@ import type { TelegramMessage } from './useTelegramChatInbox';
 import type { TelegramAgentMarkerState, TelegramAgentMessageMarkers } from './useTelegramAgentReadMarkers';
 import { getTelegramAgentMessageMarkerState } from './useTelegramAgentReadMarkers';
 
-export type TelegramMessageViewFilter = 'all' | 'unread' | 'starred';
+export type TelegramMessageViewFilter = 'all' | 'unread' | 'starred' | 'mine';
+
+export function isTelegramMessageMineForView(message: Pick<TelegramMessage, 'isOutgoing'>): boolean {
+  // V1 Mine means messages sent by the authenticated Telegram account.
+  return message.isOutgoing;
+}
 
 export function isTelegramMessageStarredForView(markerState: Pick<TelegramAgentMarkerState, 'isStarred'>): boolean {
   return markerState.isStarred;
@@ -29,6 +34,10 @@ export function filterTelegramMessagesForView(
 
   if (filter === 'starred') {
     return messages.filter((message) => isTelegramMessageStarredForView(getMarkerState(message.id)));
+  }
+
+  if (filter === 'mine') {
+    return messages.filter(isTelegramMessageMineForView);
   }
 
   const loadedMessagesById = new Map(messages.map((message) => [message.id, message]));
