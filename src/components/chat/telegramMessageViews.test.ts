@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { TelegramMessage } from './useTelegramChatInbox';
 import type { TelegramAgentMessageMarkers } from './useTelegramAgentReadMarkers';
-import { filterTelegramMessagesForViewWithMarkers, isTelegramMessageUnreadForMissionControl } from './telegramMessageViews';
+import { filterTelegramMessagesForViewWithMarkers, isTelegramMessageMineForView, isTelegramMessageUnreadForMissionControl } from './telegramMessageViews';
 
 function message(id: number, overrides: Partial<TelegramMessage> = {}): TelegramMessage {
   return {
@@ -52,6 +52,48 @@ test('filterTelegramMessagesForViewWithMarkers returns incoming locally unhandle
   assert.deepEqual(
     filterTelegramMessagesForViewWithMarkers(messages, 'chat-1', 'unread', markers).map((item) => item.id),
     [1, 5],
+  );
+});
+
+test('filterTelegramMessagesForViewWithMarkers returns only outgoing messages for mine', () => {
+  const messages = [
+    message(1),
+    message(2, { isOutgoing: true }),
+    message(3),
+    message(4, { isOutgoing: true }),
+  ];
+
+  assert.deepEqual(
+    filterTelegramMessagesForViewWithMarkers(messages, 'chat-1', 'mine', markers).map((item) => item.id),
+    [2, 4],
+  );
+});
+
+test('filterTelegramMessagesForViewWithMarkers mine ignores read and starred markers', () => {
+  const messages = [
+    message(1, { isOutgoing: true }),
+    message(2, { isOutgoing: true }),
+    message(3, { isOutgoing: true }),
+    message(4),
+  ];
+
+  assert.deepEqual(
+    filterTelegramMessagesForViewWithMarkers(messages, 'chat-1', 'mine', markers).map((item) => item.id),
+    [1, 2, 3],
+  );
+});
+
+test('filterTelegramMessagesForViewWithMarkers mine preserves order without reply context injection', () => {
+  const messages = [
+    message(1, { isOutgoing: true }),
+    message(2, { replyToMessageId: 1 }),
+    message(3, { isOutgoing: true, replyToMessageId: 2 }),
+    message(4, { replyToMessageId: 3 }),
+  ];
+
+  assert.deepEqual(
+    filterTelegramMessagesForViewWithMarkers(messages, 'chat-1', 'mine', { read: {}, starred: {} }).map((item) => item.id),
+    [1, 3],
   );
 });
 
@@ -116,4 +158,9 @@ test('isTelegramMessageUnreadForMissionControl treats read and starred messages 
   assert.equal(isTelegramMessageUnreadForMissionControl(message(2), { isRead: true, isStarred: false }), false);
   assert.equal(isTelegramMessageUnreadForMissionControl(message(3), { isRead: false, isStarred: true }), false);
   assert.equal(isTelegramMessageUnreadForMissionControl(message(4, { isOutgoing: true }), { isRead: false, isStarred: false }), false);
+});
+
+test('isTelegramMessageMineForView treats outgoing authenticated-account messages as mine', () => {
+  assert.equal(isTelegramMessageMineForView(message(1, { isOutgoing: true })), true);
+  assert.equal(isTelegramMessageMineForView(message(2)), false);
 });

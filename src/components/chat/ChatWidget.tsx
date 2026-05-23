@@ -172,6 +172,7 @@ export function ChatWidget() {
               <div className="mr-1 flex items-center gap-1">
                 {renderFilterButton('unread', 'Unread')}
                 {renderFilterButton('starred', '★ Starred')}
+                {renderFilterButton('mine', 'Mine')}
               </div>
               <button
                 onClick={() => setIsExpanded(!isExpanded)}

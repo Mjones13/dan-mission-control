@@ -761,13 +761,14 @@ export function TelegramChatInboxPage() {
                     <h1 className="truncate text-sm font-semibold text-[#f5f7fb]">{selectedChatTitle || 'Telegram group'}</h1>
                     {activeMessageFilter !== 'all' && (
                       <p className="text-[10px] text-[#778391]">
-                        Showing {activeMessageFilter === 'unread' ? 'loaded local unread' : 'loaded starred'} messages in this chat.
+                        Showing {activeMessageFilter === 'unread' ? 'loaded local unread' : activeMessageFilter === 'starred' ? 'loaded starred' : 'loaded outgoing'} messages in this chat.
                       </p>
                     )}
                   </div>
                   <div className="flex items-center gap-1.5">
                     {renderFilterButton('unread', 'Unread')}
                     {renderFilterButton('starred', '★ Starred')}
+                    {renderFilterButton('mine', 'Mine')}
                   </div>
                 </header>
                 <div className="relative min-h-0 flex-1">
@@ -796,7 +797,9 @@ export function TelegramChatInboxPage() {
                           ? 'No loaded unread messages in this chat.'
                           : activeMessageFilter === 'starred'
                             ? 'No loaded starred messages in this chat.'
-                            : 'No messages in this chat.'}
+                            : activeMessageFilter === 'mine'
+                              ? 'No loaded outgoing messages in this chat.'
+                              : 'No messages in this chat.'}
                       </div>
                     )}
                     {renderedMessages.map((message, index) => {
